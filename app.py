@@ -4,7 +4,7 @@ import pandas as pd
 app = Flask(__name__)
 
 # CSV読み込み
-df = pd.read_csv("data/support_data.csv", encoding="shift_jis")  # または UTF-8 に変更
+df = pd.read_csv("data/support_data.csv", encoding="utf-8-sig")
 unique_cities = sorted(df["地域"].dropna().unique())  # 地域一覧を抽出・昇順に並べる
 
 @app.route("/", methods=["GET", "POST"])
