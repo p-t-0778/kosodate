@@ -25,6 +25,7 @@ def index():
         children = int(request.form["children"])
         dual_income = request.form["dual_income"]
         disabled_child = request.form["disabled_child"]
+        single_parent = request.form["single_parent"]
         online_only = "online_only" in request.form
 
         # 子どもの年齢一覧を取得
@@ -55,6 +56,11 @@ def index():
         filtered = filtered[
             (filtered["障害児条件"] == "不問") |
             (filtered["障害児条件"] == disabled_child)
+        ]
+
+        filtered = filtered[
+            (filtered["ひとり親条件"] == "不問") |
+            (filtered["ひとり親条件"] == single_parent)
         ]
 
         if online_only:

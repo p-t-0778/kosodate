@@ -42,6 +42,10 @@
     <input type="radio" name="dual_income" value="はい" {% if request.form.dual_income == 'はい' %}checked{% endif %}> はい
     <input type="radio" name="dual_income" value="いいえ" {% if request.form.dual_income == 'いいえ' %}checked{% endif %}> いいえ<br>
 
+    <label>ひとり親世帯ですか？</label>
+    <input type="radio" name="single_parent" value="はい" {% if request.form.single_parent == 'はい' %}checked{% endif %}> はい
+    <input type="radio" name="single_parent" value="いいえ" {% if request.form.single_parent == 'いいえ' %}checked{% endif %}> いいえ<br>
+
     <label>障害児がいますか？</label>
     <input type="radio" name="disabled_child" value="はい" {% if request.form.disabled_child == 'はい' %}checked{% endif %}> はい
     <input type="radio" name="disabled_child" value="いいえ" {% if request.form.disabled_child == 'いいえ' %}checked{% endif %}> いいえ<br>
