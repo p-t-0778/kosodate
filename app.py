@@ -3,8 +3,9 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# CSVの読み込み
-df = pd.read_csv("data/support_data.csv")
+# CSV読み込み
+df = pd.read_csv("data/support_data.csv", encoding="shift_jis")  # または UTF-8 に変更
+unique_cities = sorted(df["地域"].dropna().unique())  # 地域一覧を抽出・昇順に並べる
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -14,7 +15,6 @@ def index():
         income = int(request.form["income"])
         children = int(request.form["children"])
 
-        # 条件に合う行だけ抽出
         filtered = df[
             (df["地域"] == city) &
             (income <= df["年収条件"]) &
@@ -22,7 +22,4 @@ def index():
         ]
         results = filtered.to_dict(orient="records")
 
-    return render_template("index.html", results=results)
-
-if __name__ == "__main__":
-    app.run(debug=True)
+    return render_template("index.html", results=results, cities=unique_cities)

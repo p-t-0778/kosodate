@@ -6,12 +6,24 @@
 </head>
 <body>
   <h1>あなたが使える子育て支援制度</h1>
-  <form method="POST">
-    <label>地域：</label><input type="text" name="city" required><br>
-    <label>年収（万円）：</label><input type="number" name="income" required><br>
-    <label>子ども人数：</label><input type="number" name="children" required><br>
-    <button type="submit">診断する</button>
-  </form>
+<form method="POST">
+  <label>地域：</label>
+  <select name="city" required>
+    <option value="">-- 選択してください --</option>
+    {% for city in cities %}
+      <option value="{{ city }}">{{ city }}</option>
+    {% endfor %}
+  </select><br>
+
+  <label>年収（万円）：</label>
+  <input type="number" name="income" required><br>
+
+  <label>子ども人数：</label>
+  <input type="number" name="children" required><br>
+
+  <button type="submit">診断する</button>
+</form>
+
 
   {% if results %}
     <h2>該当制度一覧</h2>
