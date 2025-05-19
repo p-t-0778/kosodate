@@ -1,11 +1,19 @@
 from flask import Flask, render_template, request
 import pandas as pd
+import json
 
 app = Flask(__name__)
 
-# CSV読み込み
+# CSV読み込み（文字コードはUTF-8 or UTF-8-SIG）
 df = pd.read_csv("data/support_data.csv", encoding="utf-8-sig")
-unique_cities = sorted(df["地域"].dropna().unique())  # 地域一覧を抽出・昇順に並べる
+
+# 地域と都道府県のマッピング辞書を作成（都道府県 → 市区町村リスト）
+prefecture_city_map = (
+    df.groupby("都道府県")["地域"]
+    .unique()
+    .apply(list)
+    .to_dict()
+)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -20,7 +28,7 @@ def index():
         disabled_child = request.form["disabled_child"]
         online_only = "online_only" in request.form
 
-        # 基本フィルター（市区町村・年収・子ども数・年齢）
+        # 絞り込み処理（AND条件）
         filtered = df[
             (df["都道府県"] == prefecture) &
             (df["地域"] == city) &
@@ -31,20 +39,29 @@ def index():
 
         # 共働き条件
         filtered = filtered[
-            (df["共働き条件"] == "不問") | (df["共働き条件"] == dual_income)
+            (filtered["共働き条件"] == "不問") |
+            (filtered["共働き条件"] == dual_income)
         ]
 
         # 障害児条件
         filtered = filtered[
-            (df["障害児条件"] == "不問") | (df["障害児条件"] == disabled_child)
+            (filtered["障害児条件"] == "不問") |
+            (filtered["障害児条件"] == disabled_child)
         ]
 
-        # オンライン申請フィルタ
+        # オンライン申請条件
         if online_only:
             filtered = filtered[filtered["オンライン申請"] == "〇"]
 
         results = filtered.to_dict(orient="records")
 
-    unique_cities = sorted(df["地域"].dropna().unique())
-    return render_template("index.html", results=results, cities=unique_cities)
+    unique_prefectures = sorted(df["都道府県"].dropna().unique())
+    return render_template(
+        "index.html",
+        results=results,
+        prefectures=unique_prefectures,
+        prefecture_city_map=json.dumps(prefecture_city_map, ensure_ascii=False)
+    )
 
+if __name__ == "__main__":
+    app.run(debug=True)
