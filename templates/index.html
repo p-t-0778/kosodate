@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>子育て支援制度診断</title>
+</head>
+<body>
+  <h1>あなたが使える子育て支援制度</h1>
+  <form method="POST">
+    <label>地域：</label><input type="text" name="city" required><br>
+    <label>年収（万円）：</label><input type="number" name="income" required><br>
+    <label>子ども人数：</label><input type="number" name="children" required><br>
+    <button type="submit">診断する</button>
+  </form>
+
+  {% if results %}
+    <h2>該当制度一覧</h2>
+    <ul>
+      {% for row in results %}
+      <li>
+        <strong>{{ row["制度名"] }}</strong><br>
+        内容：{{ row["内容"] }}<br>
+        金額：{{ row["金額"] }}<br>
+        <a href="{{ row["公式ページURL"] }}" target="_blank">公式ページを見る</a>
+      </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</body>
+</html>
