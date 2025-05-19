@@ -23,33 +23,40 @@ def index():
         prefecture = request.form["prefecture"]
         income = int(request.form["income"])
         children = int(request.form["children"])
-        child_age = int(request.form["child_age"])
         dual_income = request.form["dual_income"]
         disabled_child = request.form["disabled_child"]
         online_only = "online_only" in request.form
 
-        # 絞り込み処理（AND条件）
+        # 子どもの年齢一覧を取得
+        child_ages = []
+        for key in request.form:
+            if key.startswith("child_age_"):
+                try:
+                    child_ages.append(int(request.form[key]))
+                except ValueError:
+                    pass
+
+        youngest_age = min(child_ages) if child_ages else 0
+
+        # フィルタリング
         filtered = df[
             (df["都道府県"] == prefecture) &
             (df["地域"] == city) &
             (income <= df["年収上限"]) &
             (children >= df["子数下限"]) &
-            (child_age <= df["年齢上限"])
+            (youngest_age <= df["年齢上限"])
         ]
 
-        # 共働き条件
         filtered = filtered[
             (filtered["共働き条件"] == "不問") |
             (filtered["共働き条件"] == dual_income)
         ]
 
-        # 障害児条件
         filtered = filtered[
             (filtered["障害児条件"] == "不問") |
             (filtered["障害児条件"] == disabled_child)
         ]
 
-        # オンライン申請条件
         if online_only:
             filtered = filtered[filtered["オンライン申請"] == "〇"]
 

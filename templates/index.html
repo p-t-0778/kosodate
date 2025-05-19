@@ -11,34 +11,43 @@
     <select name="prefecture" id="prefecture" required>
       <option value="">-- 選択してください --</option>
       {% for pref in prefectures %}
-        <option value="{{ pref }}">{{ pref }}</option>
+        <option value="{{ pref }}" {% if request.form.prefecture == pref %}selected{% endif %}>{{ pref }}</option>
       {% endfor %}
     </select><br>
 
     <label>地域：</label>
     <select name="city" id="city" required>
       <option value="">-- 都道府県を選択してください --</option>
+      {% if request.form.city %}
+        <option value="{{ request.form.city }}" selected>{{ request.form.city }}</option>
+      {% endif %}
     </select><br>
 
     <label>月収（万円）：</label>
-    <input type="number" name="income" required><br>
+    <input type="number" name="income" required value="{{ request.form.income or '' }}"><br>
 
     <label>子どもの人数：</label>
-    <input type="number" name="children" required><br>
+    <input type="number" name="children" id="children" required value="{{ request.form.children or '' }}"><br>
 
-    <label>子どもの年齢（歳）：</label>
-    <input type="number" name="child_age" required><br>
+    <div id="child-age-fields">
+      {% for i in range(10) %}
+        {% if request.form['child_age_' ~ i] %}
+          <label>子ども{{ i+1 }}の年齢：</label>
+          <input type="number" name="child_age_{{ i }}" value="{{ request.form['child_age_' ~ i] }}" required><br>
+        {% endif %}
+      {% endfor %}
+    </div>
 
     <label>共働きですか？</label>
-    <input type="radio" name="dual_income" value="はい" required> はい
-    <input type="radio" name="dual_income" value="いいえ"> いいえ<br>
+    <input type="radio" name="dual_income" value="はい" {% if request.form.dual_income == 'はい' %}checked{% endif %}> はい
+    <input type="radio" name="dual_income" value="いいえ" {% if request.form.dual_income == 'いいえ' %}checked{% endif %}> いいえ<br>
 
     <label>障害児がいますか？</label>
-    <input type="radio" name="disabled_child" value="はい" required> はい
-    <input type="radio" name="disabled_child" value="いいえ"> いいえ<br>
+    <input type="radio" name="disabled_child" value="はい" {% if request.form.disabled_child == 'はい' %}checked{% endif %}> はい
+    <input type="radio" name="disabled_child" value="いいえ" {% if request.form.disabled_child == 'いいえ' %}checked{% endif %}> いいえ<br>
 
     <label>オンライン申請できる制度のみ表示</label>
-    <input type="checkbox" name="online_only"><br>
+    <input type="checkbox" name="online_only" {% if request.form.get('online_only') %}checked{% endif %}><br>
 
     <button type="submit">診断する</button>
   </form>
@@ -73,6 +82,28 @@
         option.textContent = city;
         citySelect.appendChild(option);
       });
+    });
+
+    const childrenInput = document.getElementById("children");
+    const ageFieldsContainer = document.getElementById("child-age-fields");
+
+    childrenInput.addEventListener("input", function () {
+      const count = parseInt(this.value, 10);
+      ageFieldsContainer.innerHTML = "";
+      if (!isNaN(count) && count > 0 && count <= 10) {
+        for (let i = 0; i < count; i++) {
+          const label = document.createElement("label");
+          label.textContent = `子ども${i + 1}の年齢：`;
+          const input = document.createElement("input");
+          input.type = "number";
+          input.name = `child_age_${i}`;
+          input.required = true;
+          input.value = '{{ request.form["child_age_" + i|string] if request.form["child_age_" + i|string] else "" }}';
+          ageFieldsContainer.appendChild(label);
+          ageFieldsContainer.appendChild(input);
+          ageFieldsContainer.appendChild(document.createElement("br"));
+        }
+      }
     });
   </script>
 </body>
