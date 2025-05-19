@@ -7,6 +7,9 @@
 <body>
   <h1>あなたが使える子育て支援制度</h1>
 <form method="POST">
+  <label>都道府県：</label>
+  <input type="text" name="prefecture" required><br>
+
   <label>地域：</label>
   <select name="city" required>
     <option value="">-- 選択してください --</option>
@@ -15,14 +18,29 @@
     {% endfor %}
   </select><br>
 
-  <label>年収（万円）：</label>
+  <label>月収（万円）：</label>
   <input type="number" name="income" required><br>
 
-  <label>子ども人数：</label>
+  <label>子どもの人数：</label>
   <input type="number" name="children" required><br>
+
+  <label>子どもの年齢（歳）：</label>
+  <input type="number" name="child_age" required><br>
+
+  <label>共働きですか？</label>
+  <input type="radio" name="dual_income" value="はい" required> はい
+  <input type="radio" name="dual_income" value="いいえ"> いいえ<br>
+
+  <label>障害児がいますか？</label>
+  <input type="radio" name="disabled_child" value="はい" required> はい
+  <input type="radio" name="disabled_child" value="いいえ"> いいえ<br>
+
+  <label>オンライン申請できる制度のみ表示</label>
+  <input type="checkbox" name="online_only"><br>
 
   <button type="submit">診断する</button>
 </form>
+
 
 
   {% if results %}
