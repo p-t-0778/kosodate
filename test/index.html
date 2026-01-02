@@ -3,14 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kanji GO-like (10Q Clear + Mobile + Choice)</title>
+  <title>Kanji GO-like (Fixed + Choice + LevelGate)</title>
   <style>
     :root{
       --bg:#0f0f12;
       --panel:#222228;
-      --card:#3b3b46;
       --text:#fff;
-      --muted: rgba(255,255,255,.7);
       --muted2: rgba(255,255,255,.55);
 
       --lv1:#5ecbff;
@@ -133,7 +131,7 @@
       .label{ white-space:normal; }
     }
 
-    /* 入力ミス演出（ミス扱いではない） */
+    /* 入力ミス演出 */
     .shake { animation: shake .18s linear 0s 1; }
     @keyframes shake{
       0%{ transform: translateX(0); }
@@ -144,7 +142,7 @@
     }
     .wrong{ box-shadow: 0 0 0 2px rgba(255,107,107,.45); }
 
-    /* 時間切れ選択UI */
+    /* 選択UI */
     #choiceWrap{
       display:none;
       gap:8px;
@@ -177,7 +175,7 @@
              placeholder="例：とうきょう"
              disabled />
       <div class="hint" id="status">読み込み中…（questions.csv）</div>
-      <div class="hint">※スマホでも動く（表示は崩れない）。操作はPCの方が楽。</div>
+      <div class="hint">※落下なし（固定表示）。間違えたら「同じ/別」を選べる。</div>
     </div>
 
     <div class="right">
@@ -192,7 +190,7 @@
       </div>
 
       <div class="badge" id="choiceWrap">
-        <span class="hint">時間切れ：</span>
+        <span class="hint" id="choiceTitle">ミス：</span>
         <button id="retrySame">同じ問題</button>
         <button id="skipDiff">別の問題</button>
         <span class="hint" id="showAnswer"></span>
@@ -209,14 +207,12 @@
   const TOTAL_CLEAR = 10;
   const LIFE_START = 5;
 
-  // Lv固定（1〜4）内訳：1〜3が3問ずつ、4が1問
+  // Lv固定内訳：1〜3が3問ずつ、4が1問
   const NEED = {1:3,2:3,3:3,4:1};
 
-  // 落下速度は固定（レベルで変えない）
-  const FALL_SPEED = 90;
-
-  // 「画面外に流れる」対策：下限を固定（画面高さの45%あたりで止める）
-  const FALL_STOP_RATIO = 0.45; // 0.45 = 画面上から45%の位置で止まる
+  // 表示位置（落下なし）
+  const FIXED_Y_RATIO = 0.35; // 画面高さの35%あたりに固定
+  const MIN_FIXED_Y = 120;
 
   const LV_COLOR = {
     1: getComputedStyle(document.documentElement).getPropertyValue('--lv1').trim(),
@@ -252,11 +248,12 @@
   const progEl = document.getElementById("prog");
 
   const choiceWrap = document.getElementById("choiceWrap");
+  const choiceTitle = document.getElementById("choiceTitle");
   const retrySameBtn = document.getElementById("retrySame");
   const skipDiffBtn = document.getElementById("skipDiff");
   const showAnswer = document.getElementById("showAnswer");
 
-  // ===== 進捗（10マス：Lv1x3, Lv2x3, Lv3x3, Lv4x1）=====
+  // ===== 進捗（固定10マス）=====
   const progressDots = [];
   function buildProgressFixed() {
     progEl.innerHTML = "";
@@ -347,7 +344,6 @@
   let QUESTIONS = [];
 
   // レベルごとの「今回使う問題（3/3/3/1）」と「未正解プール」
-  let levelPool = {1:[],2:[],3:[],4:[]};
   let remaining = {1:[],2:[],3:[],4:[]};
   let curLevel = 1;
 
@@ -357,7 +353,10 @@
     startTime: 0,
     life: LIFE_START,
     clears: 0,
-    waitingChoice: false // 時間切れ選択中はtrue
+
+    // 間違い後の選択中
+    waitingChoice: false,
+    lastMissType: null // "timeout" | "wrong"
   };
 
   // 演出
@@ -403,10 +402,13 @@
       pick[lv] = arr.slice(0, NEED[lv]);
     }
 
-    // “現在の難易度以下を出さない”を成立させるため、
-    // Lv1の未正解が消えるまでLv2に進まない…の方式にする
-    levelPool = {1: pick[1], 2: pick[2], 3: pick[3], 4: pick[4]};
-    remaining = {1: pick[1].slice(), 2: pick[2].slice(), 3: pick[3].slice(), 4: pick[4].slice()};
+    // 未正解プール（ここが空になるまで次Lvへ行かない）
+    remaining = {
+      1: pick[1].slice(),
+      2: pick[2].slice(),
+      3: pick[3].slice(),
+      4: pick[4].slice()
+    };
     curLevel = 1;
 
     buildProgressFixed();
@@ -437,9 +439,7 @@
       uiStatus.textContent = "スタートを押して開始（ひらがなEnter / 制限10秒 / 10問正解でクリア）";
       setLvPill(null);
       uiTime.textContent = TIME_LIMIT.toFixed(1);
-      choiceWrap.style.display = "none";
-      showAnswer.style.display = "none";
-      state.waitingChoice = false;
+      hideChoice();
     }
 
     if (m === "playing") {
@@ -453,9 +453,7 @@
       startBtn.disabled = false;
       startBtn.textContent = "もう一回";
       uiStatus.textContent = "CLEAR！「もう一回」で再挑戦";
-      choiceWrap.style.display = "none";
-      showAnswer.style.display = "none";
-      state.waitingChoice = false;
+      hideChoice();
     }
 
     if (m === "gameover") {
@@ -463,17 +461,23 @@
       startBtn.disabled = false;
       startBtn.textContent = "もう一回";
       uiStatus.textContent = "GAME OVER…「もう一回」で再挑戦";
-      choiceWrap.style.display = "none";
-      showAnswer.style.display = "none";
-      state.waitingChoice = false;
+      hideChoice();
     }
+  }
+
+  function hideChoice() {
+    state.waitingChoice = false;
+    state.lastMissType = null;
+    choiceWrap.style.display = "none";
+    showAnswer.style.display = "none";
+    showAnswer.textContent = "";
   }
 
   function resetGame() {
     state.life = LIFE_START;
     state.clears = 0;
     state.current = null;
-    state.waitingChoice = false;
+    hideChoice();
 
     uiLife.textContent = state.life;
     uiClears.textContent = state.clears;
@@ -481,61 +485,79 @@
     uiTime.textContent = TIME_LIMIT.toFixed(1);
     inp.value = "";
     inp.classList.remove("wrong","shake");
-    choiceWrap.style.display = "none";
-    showAnswer.style.display = "none";
-    showAnswer.textContent = "";
 
     validateAndBuildPools();
     setMode("ready");
   }
 
-  function currentLevelAdvanceIfNeeded() {
-    while (curLevel <= 4 && remaining[curLevel].length === 0) {
-      curLevel += 1;
-    }
+  function advanceLevelIfNeeded() {
+    while (curLevel <= 4 && remaining[curLevel].length === 0) curLevel += 1;
   }
 
-  function spawnNext() {
+  // 同じLvの未正解から問題を引く（excludeSame=trueなら現在の問題以外を優先）
+  function pickQuestionFromCurrentLevel(excludeSame) {
+    const arr = remaining[curLevel];
+    if (!arr.length) return null;
+
+    if (!excludeSame || arr.length === 1 || !state.current) {
+      const idx = Math.floor(Math.random() * arr.length);
+      return { q: arr[idx], idx };
+    }
+
+    // 現在の問題と一致する要素を避ける
+    const candidates = [];
+    for (let i = 0; i < arr.length; i++) {
+      const it = arr[i];
+      if (it.kanji !== state.current.kanji || it.reading !== state.current.reading) {
+        candidates.push({q: it, idx: i});
+      }
+    }
+    if (!candidates.length) {
+      const idx = Math.floor(Math.random() * arr.length);
+      return { q: arr[idx], idx };
+    }
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  function spawnNext({excludeSame=false} = {}) {
     if (state.clears >= TOTAL_CLEAR) {
       setMode("clear");
       return;
     }
 
-    currentLevelAdvanceIfNeeded();
+    advanceLevelIfNeeded();
     if (curLevel > 4) {
       setMode("clear");
       return;
     }
 
-    // 未正解プールからランダムに1問
-    const arr = remaining[curLevel];
-    const idx = Math.floor(Math.random() * arr.length);
-    const q = arr[idx];
+    const picked = pickQuestionFromCurrentLevel(excludeSame);
+    if (!picked) {
+      setMode("clear");
+      return;
+    }
 
-    const W = canvas.getBoundingClientRect().width;
-    const lv = q.level;
+    const { q, idx } = picked;
+
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+    const fixedY = Math.max(MIN_FIXED_Y, H * FIXED_Y_RATIO);
 
     state.current = {
-      level: lv,
+      level: q.level,
       kanji: q.kanji,
       reading: q.reading,
       x: W / 2,
-      y: 60,
-      speed: FALL_SPEED,
+      y: fixedY,
       timeLimit: TIME_LIMIT,
       _idxInRemaining: idx
     };
 
     state.startTime = performance.now();
-    setLvPill(lv);
+    setLvPill(q.level);
 
-    // 選択UIを隠す
-    choiceWrap.style.display = "none";
-    showAnswer.style.display = "none";
-    showAnswer.textContent = "";
-    state.waitingChoice = false;
-
-    uiStatus.textContent = `Lv${lv} / 残り ${TOTAL_CLEAR - state.clears}問`;
+    hideChoice();
+    uiStatus.textContent = `Lv${q.level} / 残り ${TOTAL_CLEAR - state.clears}問`;
   }
 
   function startOrReplay() {
@@ -545,7 +567,6 @@
       beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
       return;
     }
-
     if (state.mode === "clear" || state.mode === "gameover") {
       resetGame();
       setMode("playing");
@@ -555,7 +576,7 @@
   }
 
   function correct() {
-    // 今の問題を「未正解」から削除
+    // 正解したら未正解から削除
     if (state.current && typeof state.current._idxInRemaining === "number") {
       remaining[curLevel].splice(state.current._idxInRemaining, 1);
     }
@@ -572,6 +593,20 @@
       return;
     }
     spawnNext();
+  }
+
+  function showChoice(type) {
+    state.waitingChoice = true;
+    state.lastMissType = type; // "timeout" | "wrong"
+
+    choiceTitle.textContent = (type === "timeout") ? "時間切れ：" : "ミス：";
+    choiceWrap.style.display = "flex";
+    showAnswer.style.display = "none";
+    showAnswer.textContent = "";
+
+    uiStatus.textContent = (type === "timeout")
+      ? "時間切れ！「同じ問題」か「別の問題」を選んでね"
+      : "違う！「同じ問題」か「別の問題」を選んでね";
   }
 
   function wrongInputFX() {
@@ -594,60 +629,31 @@
       return;
     }
 
-    // 選択UIを出す（同じ問題 or 別の問題）
-    state.waitingChoice = true;
-    choiceWrap.style.display = "flex";
-    showAnswer.style.display = "none";
-    showAnswer.textContent = "";
-    uiStatus.textContent = `時間切れ！「同じ問題」か「別の問題」を選んでね`;
+    showChoice("timeout");
   }
 
-  // ===== 選択ボタン =====
+  // ===== 選択ボタン（ミス時）=====
   retrySameBtn.addEventListener("click", () => {
     if (state.mode !== "playing" || !state.current) return;
 
-    // 同じ問題：タイマーと位置だけ戻して続行
+    // 同じ問題：タイマーだけリセットして再挑戦
     state.startTime = performance.now();
-    state.current.y = 60;
-
-    choiceWrap.style.display = "none";
-    showAnswer.style.display = "none";
-    showAnswer.textContent = "";
-    state.waitingChoice = false;
-
+    hideChoice();
     inp.focus();
   });
 
   skipDiffBtn.addEventListener("click", () => {
     if (state.mode !== "playing" || !state.current) return;
 
-    // 別の問題：答えを表示してから次へ（※正解扱いにはしない）
+    // 別の問題：答え表示してから同Lv内の別問題へ（未正解は残す）
     showAnswer.style.display = "inline";
     showAnswer.textContent = `答え：${state.current.reading}`;
 
-    // ここで「今の問題は未正解のまま残す」ので、
-    // 同レベルの別問題に進むため、まず今の問題をremainingから一時的に外す
-    // → 次の問題でまた戻す（“同レベル内で別問題”を確実に出すためのテク）
-    const saved = state.current;
-    let removed = null;
-    if (typeof saved._idxInRemaining === "number" && remaining[curLevel].length > 1) {
-      removed = remaining[curLevel].splice(saved._idxInRemaining, 1)[0];
-    }
-
+    // 選択中はタイマー止めたまま
     setTimeout(() => {
-      choiceWrap.style.display = "none";
-      showAnswer.style.display = "none";
-      showAnswer.textContent = "";
-      state.waitingChoice = false;
-
-      // 別問題へ
-      spawnNext();
-
-      // 一時的に外した問題を元に戻す（未正解のまま残す）
-      if (removed) {
-        remaining[curLevel].push(removed);
-      }
-
+      // 別問題を優先（同Lv内、可能なら現在以外）
+      hideChoice();
+      spawnNext({excludeSame:true});
       inp.focus();
     }, 900);
   });
@@ -667,7 +673,11 @@
     if (typed === state.current.reading) {
       correct();
     } else {
+      // “ミスしても時間内ならOK”のルールを続けるなら
+      // ここは本来「何もしない」でもいいけど、
+      // 今回はユーザー要件で「ミス時に同じ/別を選べる」なので選択を出す
       wrongInputFX();
+      showChoice("wrong");
     }
   });
 
@@ -735,14 +745,8 @@
     if (maruAlpha < 0.01) maruAlpha = 0;
   }
 
-  // フレーム間Δtで落下を安定させる（PC/スマホ差を減らす）
-  let lastT = performance.now();
-
   function draw() {
     const now = performance.now();
-    const dt = Math.min(0.033, (now - lastT) / 1000); // 最大33ms相当
-    lastT = now;
-
     const rect = canvas.getBoundingClientRect();
     const W = rect.width, H = rect.height;
 
@@ -770,7 +774,6 @@
       flashAlpha = 0;
     }
 
-    // モード別
     if (state.mode === "ready") {
       drawOverlay("スタートを押して開始", "ひらがなEnter / 制限10秒 / 10問正解でクリア");
       uiTime.textContent = TIME_LIMIT.toFixed(1);
@@ -789,21 +792,23 @@
 
     // プレイ中
     if (state.mode === "playing" && state.current) {
-      const elapsed = (now - state.startTime) / 1000;
-      const remain = Math.max(0, state.current.timeLimit - elapsed);
+      // 選択中はタイマーを止める（表示は0.0固定）
+      let remain = 0;
+      if (!state.waitingChoice) {
+        const elapsed = (now - state.startTime) / 1000;
+        remain = Math.max(0, state.current.timeLimit - elapsed);
+      }
       uiTime.textContent = remain.toFixed(1);
 
-      // タイムアウト（選択中でない時だけ）
+      // 時間切れ（選択中じゃない時だけ）
       if (!state.waitingChoice && remain <= 0) {
         timeoutMiss();
       }
 
-      // 落下（見た目）：選択中は止める
-      if (!state.waitingChoice) {
-        const stopY = Math.max(120, H * FALL_STOP_RATIO);
-        state.current.y += state.current.speed * dt;
-        if (state.current.y > stopY) state.current.y = stopY;
-      }
+      // 固定位置を常に再計算（画面回転などにも対応）
+      const fixedY = Math.max(MIN_FIXED_Y, H * FIXED_Y_RATIO);
+      state.current.x = W / 2;
+      state.current.y = fixedY;
 
       const lv = state.current.level;
       const accent = LV_COLOR[lv] || LV_COLOR.default;
@@ -861,10 +866,8 @@
       QUESTIONS = await loadQuestions();
       if (!QUESTIONS.length) throw new Error("CSVに問題がありません");
 
-      // Lv1〜4だけ使う
       QUESTIONS = QUESTIONS.filter(q => [1,2,3,4].includes(q.level));
 
-      // プール生成
       validateAndBuildPools();
 
       uiLife.textContent = LIFE_START;
