@@ -3,30 +3,54 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kanji GO-like (CSV + Difficulty Ramp)</title>
+  <title>Kanji GO-like (10Q Clear + Mobile)</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #0f0f12; color: #fff; }
-    .wrap { height: 100%; display: grid; grid-template-rows: 1fr auto; }
-    canvas { width: 100%; height: 100%; display: block; }
+    :root{
+      --bg:#0f0f12;
+      --panel:#222228;
+      --card:#3b3b46;
+      --text:#fff;
+      --muted: rgba(255,255,255,.7);
+      --muted2: rgba(255,255,255,.55);
+
+      --lv1:#5ecbff;
+      --lv2:#7bff91;
+      --lv3:#ffd36b;
+      --lv4:#ff6b6b;
+      --lvD:#c9c9d2;
+    }
+
+    html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
+    .wrap { height:100%; display:grid; grid-template-rows: 1fr auto; }
+    canvas { width:100%; height:100%; display:block; touch-action: none; }
+
     .ui{
+      background:var(--panel);
+      padding:10px 12px;
       display:grid;
       grid-template-columns: 1fr auto;
       gap:12px;
-      padding:10px 12px;
-      background:#222228;
       align-items:center;
     }
-    .left{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .label{ font-size:14px; opacity:.9; }
-    input{
-      width:min(520px, 70vw);
-      height:40px;
-      border-radius:10px;
-      border:none;
-      outline:none;
-      padding:0 12px;
-      font-size:18px;
+
+    .left{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      min-width:0;
     }
+
+    .label{ font-size:14px; opacity:.9; white-space:nowrap; }
+    .hint{ font-size:12px; color:var(--muted2); }
+
+    .controls{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+
     button{
       height:40px;
       padding:0 12px;
@@ -38,10 +62,93 @@
       font-size:14px;
     }
     button:hover{ filter:brightness(1.1); }
-    .right{ display:flex; gap:16px; font-size:14px; flex-wrap:wrap; justify-content:flex-end; }
-    .badge{ opacity:.95; }
-    .danger{ color:#ff5a5a; }
-    .hint{ font-size:12px; opacity:.7; }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+
+    input{
+      height:40px;
+      border-radius:10px;
+      border:none;
+      outline:none;
+      padding:0 12px;
+      font-size:18px;
+      width:min(420px, 70vw);
+      max-width:100%;
+    }
+
+    /* iOSで拡大されにくいように16px以上確保 */
+    @media (max-width: 520px){
+      input{ font-size:16px; width:100%; }
+    }
+
+    .right{
+      display:flex;
+      gap:14px;
+      font-size:14px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      align-items:center;
+    }
+
+    .badge{ opacity:.95; display:flex; gap:8px; align-items:center; }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      padding:2px 10px;
+      height:22px;
+      border-radius:999px;
+      font-size:12px;
+      border:1px solid rgba(255,255,255,.15);
+      background: rgba(255,255,255,.06);
+      color:#fff;
+    }
+
+    .progress{
+      display:flex;
+      gap:6px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .dot{
+      width:14px;
+      height:14px;
+      border-radius:4px;
+      border:1px solid rgba(255,255,255,.18);
+      background: rgba(255,255,255,.06);
+      box-shadow: inset 0 0 0 0 rgba(255,255,255,0);
+      position:relative;
+    }
+    .dot.done::after{
+      content:"";
+      position:absolute;
+      inset:2px;
+      border-radius:3px;
+      background: rgba(255,255,255,.85);
+      opacity:.75;
+    }
+    .dot.lv1{ background: color-mix(in srgb, var(--lv1) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv1) 40%, rgba(255,255,255,.18)); }
+    .dot.lv2{ background: color-mix(in srgb, var(--lv2) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv2) 40%, rgba(255,255,255,.18)); }
+    .dot.lv3{ background: color-mix(in srgb, var(--lv3) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv3) 40%, rgba(255,255,255,.18)); }
+    .dot.lv4{ background: color-mix(in srgb, var(--lv4) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv4) 40%, rgba(255,255,255,.18)); }
+
+    /* スマホではUIを縦積み */
+    @media (max-width: 860px){
+      .ui{ grid-template-columns: 1fr; }
+      .right{ justify-content:flex-start; }
+      .label{ white-space:normal; }
+    }
+
+    /* 入力ミス演出（ミス扱いではない） */
+    .shake { animation: shake .18s linear 0s 1; }
+    @keyframes shake{
+      0%{ transform: translateX(0); }
+      25%{ transform: translateX(-4px); }
+      50%{ transform: translateX(4px); }
+      75%{ transform: translateX(-3px); }
+      100%{ transform: translateX(0); }
+    }
+    .wrong{
+      box-shadow: 0 0 0 2px rgba(255,107,107,.45);
+    }
   </style>
 </head>
 <body>
@@ -50,52 +157,59 @@
 
   <div class="ui">
     <div class="left">
+      <div class="controls">
+        <button id="start">スタート</button>
+        <button id="restart">リスタート</button>
+      </div>
+
       <div class="label">ひらがなで入力してEnter：</div>
-      <input id="inp" autocomplete="off" placeholder="例：とうきょう" />
-      <button id="restart">リスタート</button>
+      <input id="inp"
+             autocomplete="off"
+             autocapitalize="off"
+             spellcheck="false"
+             inputmode="kana"
+             placeholder="例：とうきょう"
+             disabled />
       <div class="hint" id="status">読み込み中…（questions.csv）</div>
+      <div class="hint">※スマホでも動くけど、遊びやすさはPC推奨（かな入力＋Enter）</div>
     </div>
+
     <div class="right">
-      <div class="badge">LEVEL上限: <span id="maxlv">1</span></div>
-      <div class="badge">TIME: <span id="time">0.0</span>s</div>
-      <div class="badge">SCORE: <span id="score">0</span></div>
+      <div class="badge">LV: <span class="pill" id="lvPill">-</span></div>
+      <div class="badge">TIME: <span id="time">10.0</span>s</div>
       <div class="badge">LIFE: <span id="life">5</span></div>
-      <div class="badge">COMBO: <span id="combo">0</span></div>
-      <div class="badge">正解数: <span id="clears">0</span></div>
+      <div class="badge">正解: <span id="clears">0</span>/10</div>
+      <div class="badge progress" title="進捗">
+        <span class="hint">進捗</span>
+        <div id="prog" class="progress"></div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
 (() => {
-  // =========================
-  // 設定（難易度カーブ）
-  // =========================
+  // ===== 設定 =====
   const CSV_PATH = "./questions.csv";
+  const TIME_LIMIT = 10.0;
+  const TOTAL_CLEAR = 10;
+  const LIFE_START = 5;
 
-  // “簡単→徐々に難しく”の核
-  const RAMP = {
-    // 正解数がこの値を超えると「出題できる最大level」を増やす
-    // 例：0〜9正解は level1 だけ、10〜19正解は level2 まで、…みたいな感じ
-    unlockEvery: 10,        // 何問正解ごとに最大level+1 するか
-    maxLevelCap: 10,        // CSV側が10まである想定（足りなければ自動で止まる）
+  // Lv固定（1〜4）内訳：1〜3が3問ずつ、4が1問
+  const NEED = {1:3,2:3,3:3,4:1};
 
-    // 制限時間（徐々に短くする）
-    timeStart: 4.2,         // 最初の制限時間（秒）
-    timeMin: 1.8,           // 下限（ここまで短くなる）
-    timeDecayPerUnlock: 0.18, // 1段階上がるごとに何秒短縮
-
-    // 落下速度（徐々に上げる）
-    speedStart: 85,         // px/sec
-    speedMax: 260,
-    speedGainPerUnlock: 12, // 1段階上がるごとに加速
+  const LV_COLOR = {
+    1: getComputedStyle(document.documentElement).getPropertyValue('--lv1').trim(),
+    2: getComputedStyle(document.documentElement).getPropertyValue('--lv2').trim(),
+    3: getComputedStyle(document.documentElement).getPropertyValue('--lv3').trim(),
+    4: getComputedStyle(document.documentElement).getPropertyValue('--lv4').trim(),
+    default: getComputedStyle(document.documentElement).getPropertyValue('--lvD').trim()
   };
 
-  // =========================
-  // Canvas
-  // =========================
+  // ===== Canvas =====
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
+
   function resize() {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const rect = canvas.getBoundingClientRect();
@@ -105,24 +219,65 @@
   }
   window.addEventListener("resize", resize);
 
-  // =========================
-  // UI
-  // =========================
-  const inp = document.getElementById("inp");
+  // ===== UI =====
+  const startBtn = document.getElementById("start");
   const restartBtn = document.getElementById("restart");
-  const uiScore = document.getElementById("score");
-  const uiLife = document.getElementById("life");
-  const uiCombo = document.getElementById("combo");
-  const uiTime = document.getElementById("time");
-  const uiMaxLv = document.getElementById("maxlv");
-  const uiClears = document.getElementById("clears");
-  const uiStatus = document.getElementById("status");
+  const inp = document.getElementById("inp");
 
-  // =========================
-  // CSV読み込み
-  // =========================
+  const uiStatus = document.getElementById("status");
+  const uiTime = document.getElementById("time");
+  const uiLife = document.getElementById("life");
+  const uiClears = document.getElementById("clears");
+  const uiLvPill = document.getElementById("lvPill");
+  const progEl = document.getElementById("prog");
+
+  // ===== 進捗（10マス）=====
+  const progressDots = [];
+  function buildProgress(deck) {
+    progEl.innerHTML = "";
+    progressDots.length = 0;
+    for (let i = 0; i < deck.length; i++) {
+      const lv = deck[i].level;
+      const d = document.createElement("div");
+      d.className = `dot lv${lv}`;
+      d.title = `Q${i+1} (Lv${lv})`;
+      progEl.appendChild(d);
+      progressDots.push(d);
+    }
+  }
+  function markProgressDone(nDone) {
+    for (let i = 0; i < progressDots.length; i++) {
+      progressDots[i].classList.toggle("done", i < nDone);
+    }
+  }
+
+  // ===== 音（外部ファイル不要）=====
+  let audioCtx = null;
+  function beep({freq=880, dur=0.07, type="triangle", vol=0.05} = {}) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = type;
+      o.frequency.value = freq;
+      g.gain.value = vol;
+
+      o.connect(g);
+      g.connect(audioCtx.destination);
+
+      const t = audioCtx.currentTime;
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+      o.start(t);
+      o.stop(t + dur);
+    } catch (_) {}
+  }
+
+  // ===== CSV読み込み =====
   function parseCSV(text) {
-    // シンプルCSVパーサ（カンマ区切り、ダブルクォートなし前提）
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
     if (!lines.length) return [];
 
@@ -151,125 +306,234 @@
   async function loadQuestions() {
     const res = await fetch(CSV_PATH, { cache: "no-store" });
     if (!res.ok) throw new Error(`CSV読み込み失敗: ${res.status}`);
-    const text = await res.text();
-    return parseCSV(text);
+    return parseCSV(await res.text());
   }
 
-  // =========================
-  // ゲーム状態
-  // =========================
+  // ===== ゲーム状態 =====
   let QUESTIONS = [];
-  let maxLevelInCSV = 1;
+  let deck = [];
+  let deckIndex = 0;
 
   const state = {
+    mode: "loading", // loading | ready | playing | gameover | clear
     current: null,
     startTime: 0,
-    score: 0,
-    life: 5,
-    combo: 0,
+    life: LIFE_START,
     clears: 0,
-    gameOver: false,
   };
 
+  // 演出
+  let flashAlpha = 0;
+  let flashColor = "#ffffff";
+  let maruAlpha = 0;  // 「〇」演出
+  function triggerCorrectFX(lv) {
+    flashAlpha = 0.55;
+    flashColor = LV_COLOR[lv] || "#ffffff";
+    maruAlpha = 1.0;
+  }
+
   function normalize(s){ return (s || "").trim(); }
-  function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
 
-  function calcUnlockTier() {
-    // 0.. unlockEvery-1 => tier0, unlockEvery.. => tier1 ...
-    return Math.floor(state.clears / RAMP.unlockEvery);
+  function shuffleInPlace(a) {
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
   }
 
-  function calcMaxLevelAllowed() {
-    const tier = calcUnlockTier();
-    const allowed = 1 + tier;
-    // CSVの最大levelも超えない
-    return Math.max(1, Math.min(allowed, maxLevelInCSV, RAMP.maxLevelCap));
+  function validateAndBuildDeck() {
+    const byLv = new Map([[1,[]],[2,[]],[3,[]],[4,[]]]);
+    for (const q of QUESTIONS) {
+      if (byLv.has(q.level)) byLv.get(q.level).push(q);
+    }
+
+    const missing = [];
+    for (const lv of [1,2,3,4]) {
+      if (byLv.get(lv).length < NEED[lv]) {
+        missing.push(`Lv${lv}が${NEED[lv]}問必要（今${byLv.get(lv).length}問）`);
+      }
+    }
+    if (missing.length) throw new Error("CSVの問題数が足りません: " + missing.join(" / "));
+
+    // 各Lvから必要数だけ取る（CSVに多くてもOK）
+    const picked = [];
+    for (const lv of [1,2,3,4]) {
+      const arr = byLv.get(lv).slice();
+      shuffleInPlace(arr);
+      picked.push(...arr.slice(0, NEED[lv]));
+    }
+
+    // Lv1→Lv2→Lv3→Lv4（同Lv内だけシャッフル）
+    const lv1 = shuffleInPlace(picked.filter(q => q.level === 1));
+    const lv2 = shuffleInPlace(picked.filter(q => q.level === 2));
+    const lv3 = shuffleInPlace(picked.filter(q => q.level === 3));
+    const lv4 = picked.filter(q => q.level === 4);
+
+    deck = [...lv1, ...lv2, ...lv3, ...lv4];
+    deckIndex = 0;
+
+    buildProgress(deck);
+    markProgressDone(0);
   }
 
-  function calcTimeLimit() {
-    const tier = calcUnlockTier();
-    const t = RAMP.timeStart - tier * RAMP.timeDecayPerUnlock;
-    return Math.max(RAMP.timeMin, t);
+  function setLvPill(lv) {
+    if (!lv) {
+      uiLvPill.textContent = "-";
+      uiLvPill.style.borderColor = "rgba(255,255,255,.15)";
+      uiLvPill.style.background = "rgba(255,255,255,.06)";
+      uiLvPill.style.color = "#fff";
+      return;
+    }
+    const c = LV_COLOR[lv] || LV_COLOR.default;
+    uiLvPill.textContent = `Lv${lv}`;
+    uiLvPill.style.borderColor = c + "55";
+    uiLvPill.style.background = c + "22";
+    uiLvPill.style.color = c;
   }
 
-  function calcSpeed() {
-    const tier = calcUnlockTier();
-    const s = RAMP.speedStart + tier * RAMP.speedGainPerUnlock;
-    return Math.min(RAMP.speedMax, s);
+  function setMode(m) {
+    state.mode = m;
+
+    if (m === "ready") {
+      inp.disabled = true;
+      startBtn.disabled = false;
+      startBtn.textContent = "スタート";
+      uiStatus.textContent = "スタートを押して開始（ひらがなでEnter / 制限10秒 / 10問でクリア）";
+      setLvPill(null);
+      uiTime.textContent = TIME_LIMIT.toFixed(1);
+    }
+    if (m === "playing") {
+      inp.disabled = false;
+      startBtn.disabled = true;
+      inp.focus();
+    }
+    if (m === "clear") {
+      inp.disabled = true;
+      startBtn.disabled = false;
+      startBtn.textContent = "もう一回";
+      uiStatus.textContent = "CLEAR！「もう一回」で再挑戦";
+    }
+    if (m === "gameover") {
+      inp.disabled = true;
+      startBtn.disabled = false;
+      startBtn.textContent = "もう一回";
+      uiStatus.textContent = "GAME OVER…「もう一回」で再挑戦";
+    }
   }
 
-  function poolForCurrentDifficulty() {
-    const maxLv = calcMaxLevelAllowed();
-    // “徐々に難しく”：最大levelまでの問題を混ぜる（完全に上書きしたければ `q.level === maxLv` にする）
-    const pool = QUESTIONS.filter(q => q.level <= maxLv);
-    // 念のため空なら全体
-    return pool.length ? pool : QUESTIONS;
+  function resetGame() {
+    state.life = LIFE_START;
+    state.clears = 0;
+    state.current = null;
+
+    uiLife.textContent = state.life;
+    uiClears.textContent = state.clears;
+    uiTime.textContent = TIME_LIMIT.toFixed(1);
+    inp.value = "";
+    inp.classList.remove("wrong","shake");
+
+    validateAndBuildDeck();
+    setMode("ready");
   }
 
-  function spawn() {
-    const pool = poolForCurrentDifficulty();
-    const q = pick(pool);
+  function spawnNext() {
+    if (state.clears >= TOTAL_CLEAR) {
+      setMode("clear");
+      return;
+    }
+
+    const q = deck[deckIndex];
+    deckIndex += 1;
+
     const W = canvas.getBoundingClientRect().width;
+    const lv = q.level;
 
     state.current = {
-      level: q.level,
+      level: lv,
       kanji: q.kanji,
       reading: q.reading,
       x: W / 2,
       y: 60,
-      speed: calcSpeed(),
-      timeLimit: calcTimeLimit(),
+      speed: FALL_SPEED,
+      timeLimit: TIME_LIMIT
     };
     state.startTime = performance.now();
+    setLvPill(lv);
 
-    // UI更新
-    uiMaxLv.textContent = String(calcMaxLevelAllowed());
-    uiStatus.textContent = `出題レベル${state.current.level}（上限${calcMaxLevelAllowed()}）/ 制限${state.current.timeLimit.toFixed(1)}s`;
+    uiStatus.textContent = `残り ${TOTAL_CLEAR - state.clears}問（Lv${lv}）`;
   }
 
-  function resetGame() {
-    state.score = 0;
-    state.life = 5;
-    state.combo = 0;
-    state.clears = 0;
-    state.gameOver = false;
+  function startOrReplay() {
+    // ready -> start
+    if (state.mode === "ready") {
+      setMode("playing");
+      spawnNext();
+      beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
+      return;
+    }
 
-    uiScore.textContent = state.score;
-    uiLife.textContent = state.life;
-    uiCombo.textContent = state.combo;
-    uiClears.textContent = state.clears;
-    uiMaxLv.textContent = "1";
-
-    inp.value = "";
-    inp.focus();
-
-    spawn();
+    // clear/gameover -> replay
+    if (state.mode === "clear" || state.mode === "gameover") {
+      resetGame();
+      setMode("playing");
+      spawnNext();
+      beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
+    }
   }
 
-  function missTimeout() {
+  function timeoutMiss() {
     state.life -= 1;
-    state.combo = 0;
     uiLife.textContent = state.life;
-    uiCombo.textContent = state.combo;
-    if (state.life <= 0) state.gameOver = true;
+
+    // 低めの音
+    beep({freq: 180, dur: 0.10, type: "sawtooth", vol: 0.04});
+
+    if (navigator.vibrate) navigator.vibrate(40);
+
+    if (state.life <= 0) {
+      setMode("gameover");
+      return;
+    }
+    spawnNext();
   }
 
   function correct() {
     state.clears += 1;
-    state.combo += 1;
-    const bonus = Math.min(200, state.combo * 10);
-    state.score += 100 + bonus;
-
-    uiScore.textContent = state.score;
-    uiCombo.textContent = state.combo;
     uiClears.textContent = state.clears;
+    markProgressDone(state.clears);
+
+    // 正解演出
+    triggerCorrectFX(state.current?.level);
+    beep({freq: 880, dur: 0.07, type: "triangle", vol: 0.05});
+
+    if (state.clears >= TOTAL_CLEAR) {
+      setMode("clear");
+      return;
+    }
+    spawnNext();
   }
 
-  // 入力：正解は「ひらがな reading のみ」
+  function wrongInputFX() {
+    inp.classList.add("wrong","shake");
+    if (navigator.vibrate) navigator.vibrate(15);
+    // すぐ戻す
+    setTimeout(() => {
+      inp.classList.remove("shake");
+    }, 220);
+    setTimeout(() => {
+      inp.classList.remove("wrong");
+    }, 420);
+    // 軽いSE（任意）
+    beep({freq: 300, dur: 0.04, type: "sine", vol: 0.03});
+  }
+
+  // 入力：ひらがなのみ正解 / 誤入力はミス扱いしない（時間内ならOK）
   inp.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
-    if (state.gameOver || !state.current) return;
+
+    if (state.mode !== "playing" || !state.current) return;
 
     const typed = normalize(inp.value);
     inp.value = "";
@@ -277,16 +541,24 @@
 
     if (typed === state.current.reading) {
       correct();
-      spawn(); // 次へ
+    } else {
+      // “ミスしても時間内ならOK”だが、フィードバックだけは出す
+      wrongInputFX();
     }
-    // 間違いは“時間内ならOK” => 何もしない（打ち直し）
   });
 
-  restartBtn.addEventListener("click", resetGame);
+  // クリックでフォーカス（スマホで入力しやすく）
+  canvas.addEventListener("pointerdown", () => {
+    if (state.mode === "playing") inp.focus();
+  });
 
-  // =========================
-  // 描画
-  // =========================
+  startBtn.addEventListener("click", startOrReplay);
+  restartBtn.addEventListener("click", () => {
+    if (state.mode === "loading") return;
+    resetGame();
+  });
+
+  // ===== 描画 =====
   function roundRect(x, y, w, h, r) {
     const rr = Math.min(r, w/2, h/2);
     ctx.beginPath();
@@ -298,6 +570,47 @@
     ctx.closePath();
   }
 
+  function drawOverlay(main, sub) {
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+
+    ctx.fillStyle = "rgba(0,0,0,.62)";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 38px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.fillText(main, W/2, H/2 - 18);
+
+    if (sub) {
+      ctx.font = "16px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.fillText(sub, W/2, H/2 + 22);
+    }
+
+    ctx.textAlign = "left";
+  }
+
+  function drawMaru() {
+    if (maruAlpha <= 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+
+    ctx.save();
+    ctx.globalAlpha = maruAlpha;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(W/2, H/2 - 10, Math.min(W,H) * 0.10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    maruAlpha *= 0.82; // 減衰
+    if (maruAlpha < 0.01) maruAlpha = 0;
+  }
+
   function draw() {
     const rect = canvas.getBoundingClientRect();
     const W = rect.width, H = rect.height;
@@ -306,23 +619,61 @@
     ctx.fillStyle = "#0f0f12";
     ctx.fillRect(0, 0, W, H);
 
-    if (state.current) {
+    // ガイド
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = "#ffffff";
+    for (let i = 1; i <= 5; i++){
+      const x = (W / 6) * i;
+      ctx.fillRect(x - 1, 0, 2, H);
+    }
+    ctx.globalAlpha = 1;
+
+    // 正解フラッシュ
+    if (flashAlpha > 0.001) {
+      ctx.globalAlpha = flashAlpha;
+      ctx.fillStyle = flashColor;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      flashAlpha *= 0.88;
+    } else {
+      flashAlpha = 0;
+    }
+
+    // モード別
+    if (state.mode === "ready") {
+      drawOverlay("スタートを押して開始", "ひらがなEnter / 制限10秒 / 10問でクリア");
+      uiTime.textContent = TIME_LIMIT.toFixed(1);
+      return;
+    }
+    if (state.mode === "gameover") {
+      drawOverlay("GAME OVER", "「もう一回」or リスタート");
+      uiTime.textContent = TIME_LIMIT.toFixed(1);
+      return;
+    }
+    if (state.mode === "clear") {
+      drawOverlay("CLEAR!", "10問正解。おつかれ！");
+      uiTime.textContent = TIME_LIMIT.toFixed(1);
+      return;
+    }
+
+    // プレイ中
+    if (state.mode === "playing" && state.current) {
       const elapsed = (performance.now() - state.startTime) / 1000;
       const remain = Math.max(0, state.current.timeLimit - elapsed);
       uiTime.textContent = remain.toFixed(1);
 
-      // 時間切れ => ミス確定して次へ
-      if (!state.gameOver && remain <= 0) {
-        missTimeout();
-        if (!state.gameOver) spawn();
+      if (remain <= 0) {
+        timeoutMiss();
       }
 
-      // 落下
-      if (!state.gameOver) {
-        state.current.y += state.current.speed * (1/60); // 60fps想定の簡易
+      // 落下（見た目）
+      if (state.mode === "playing" && state.current) {
+        state.current.y += state.current.speed * (1/60);
       }
 
-      // 描画
+      const lv = state.current.level;
+      const accent = LV_COLOR[lv] || LV_COLOR.default;
+
       const text = state.current.kanji;
       ctx.font = "32px system-ui, -apple-system, Segoe UI, sans-serif";
       const tw = ctx.measureText(text).width;
@@ -343,6 +694,10 @@
       roundRect(x, y, boxW, boxH, 12);
       ctx.fill();
 
+      // アクセント
+      ctx.fillStyle = accent + "cc";
+      ctx.fillRect(x, y, boxW, 4);
+
       // 文字
       ctx.fillStyle = "#fff";
       ctx.textBaseline = "middle";
@@ -351,36 +706,20 @@
       // タイムバー
       ctx.fillStyle = "#555";
       ctx.fillRect(x, y + boxH + 10, boxW, 7);
-      ctx.fillStyle = "#6cf";
+      ctx.fillStyle = accent;
       ctx.fillRect(x, y + boxH + 10, boxW * (remain / state.current.timeLimit), 7);
-    }
 
-    if (state.gameOver) {
-      ctx.fillStyle = "rgba(0,0,0,.62)";
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = "#ff5a5a";
-      ctx.font = "bold 42px system-ui, -apple-system, Segoe UI, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("GAME OVER", W / 2, H / 2 - 14);
-
-      ctx.fillStyle = "#fff";
-      ctx.font = "18px system-ui, -apple-system, Segoe UI, sans-serif";
-      ctx.fillText("下の「リスタート」で再開", W / 2, H / 2 + 26);
-
-      ctx.textAlign = "left";
+      // 正解「〇」
+      drawMaru();
     }
   }
 
-  // ループ
   function loop() {
     draw();
     requestAnimationFrame(loop);
   }
 
-  // =========================
-  // 起動
-  // =========================
+  // ===== 起動 =====
   (async () => {
     resize();
     try {
@@ -388,14 +727,26 @@
       QUESTIONS = await loadQuestions();
       if (!QUESTIONS.length) throw new Error("CSVに問題がありません");
 
-      maxLevelInCSV = QUESTIONS.reduce((m, q) => Math.max(m, q.level), 1);
-      uiStatus.textContent = `読み込み完了：${QUESTIONS.length}問 / 最大level=${maxLevelInCSV}`;
+      // Lv1〜4だけ
+      QUESTIONS = QUESTIONS.filter(q => [1,2,3,4].includes(q.level));
+
+      validateAndBuildDeck();
+
+      uiLife.textContent = LIFE_START;
+      uiClears.textContent = "0";
+      setLvPill(null);
+      uiTime.textContent = TIME_LIMIT.toFixed(1);
+
       resetGame();
+      setMode("ready");
+      uiStatus.textContent = "読み込み完了。スタートで開始";
       loop();
     } catch (err) {
-      uiStatus.textContent =
-        "読み込みに失敗しました。公開（http/https）環境で動かしてください。詳細: " + err.message;
+      uiStatus.textContent = "読み込み失敗（questions.csv確認）： " + err.message;
       console.error(err);
+      resetGame();
+      setMode("ready");
+      loop();
     }
   })();
 })();
