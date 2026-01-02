@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kanji GO-like (CSV + Difficulty Ramp)</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0f0f12; color: #fff; }
+    .wrap { height: 100%; display: grid; grid-template-rows: 1fr auto; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .ui{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap:12px;
+      padding:10px 12px;
+      background:#222228;
+      align-items:center;
+    }
+    .left{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .label{ font-size:14px; opacity:.9; }
+    input{
+      width:min(520px, 70vw);
+      height:40px;
+      border-radius:10px;
+      border:none;
+      outline:none;
+      padding:0 12px;
+      font-size:18px;
+    }
+    button{
+      height:40px;
+      padding:0 12px;
+      border-radius:10px;
+      border:none;
+      cursor:pointer;
+      background:#3a3a44;
+      color:#fff;
+      font-size:14px;
+    }
+    button:hover{ filter:brightness(1.1); }
+    .right{ display:flex; gap:16px; font-size:14px; flex-wrap:wrap; justify-content:flex-end; }
+    .badge{ opacity:.95; }
+    .danger{ color:#ff5a5a; }
+    .hint{ font-size:12px; opacity:.7; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="c"></canvas>
+
+  <div class="ui">
+    <div class="left">
+      <div class="label">ひらがなで入力してEnter：</div>
+      <input id="inp" autocomplete="off" placeholder="例：とうきょう" />
+      <button id="restart">リスタート</button>
+      <div class="hint" id="status">読み込み中…（questions.csv）</div>
+    </div>
+    <div class="right">
+      <div class="badge">LEVEL上限: <span id="maxlv">1</span></div>
+      <div class="badge">TIME: <span id="time">0.0</span>s</div>
+      <div class="badge">SCORE: <span id="score">0</span></div>
+      <div class="badge">LIFE: <span id="life">5</span></div>
+      <div class="badge">COMBO: <span id="combo">0</span></div>
+      <div class="badge">正解数: <span id="clears">0</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // =========================
+  // 設定（難易度カーブ）
+  // =========================
+  const CSV_PATH = "./questions.csv";
+
+  // “簡単→徐々に難しく”の核
+  const RAMP = {
+    // 正解数がこの値を超えると「出題できる最大level」を増やす
+    // 例：0〜9正解は level1 だけ、10〜19正解は level2 まで、…みたいな感じ
+    unlockEvery: 10,        // 何問正解ごとに最大level+1 するか
+    maxLevelCap: 10,        // CSV側が10まである想定（足りなければ自動で止まる）
+
+    // 制限時間（徐々に短くする）
+    timeStart: 4.2,         // 最初の制限時間（秒）
+    timeMin: 1.8,           // 下限（ここまで短くなる）
+    timeDecayPerUnlock: 0.18, // 1段階上がるごとに何秒短縮
+
+    // 落下速度（徐々に上げる）
+    speedStart: 85,         // px/sec
+    speedMax: 260,
+    speedGainPerUnlock: 12, // 1段階上がるごとに加速
+  };
+
+  // =========================
+  // Canvas
+  // =========================
+  const canvas = document.getElementById("c");
+  const ctx = canvas.getContext("2d");
+  function resize() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+
+  // =========================
+  // UI
+  // =========================
+  const inp = document.getElementById("inp");
+  const restartBtn = document.getElementById("restart");
+  const uiScore = document.getElementById("score");
+  const uiLife = document.getElementById("life");
+  const uiCombo = document.getElementById("combo");
+  const uiTime = document.getElementById("time");
+  const uiMaxLv = document.getElementById("maxlv");
+  const uiClears = document.getElementById("clears");
+  const uiStatus = document.getElementById("status");
+
+  // =========================
+  // CSV読み込み
+  // =========================
+  function parseCSV(text) {
+    // シンプルCSVパーサ（カンマ区切り、ダブルクォートなし前提）
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+    if (!lines.length) return [];
+
+    const header = lines[0].split(",").map(s => s.trim());
+    const idx = (name) => header.indexOf(name);
+
+    const iLevel = idx("level");
+    const iKanji = idx("kanji");
+    const iReading = idx("reading");
+    if (iLevel < 0 || iKanji < 0 || iReading < 0) {
+      throw new Error("CSVヘッダは level,kanji,reading が必要です");
+    }
+
+    const rows = [];
+    for (let i=1; i<lines.length; i++) {
+      const cols = lines[i].split(",").map(s => s.trim());
+      const level = Number(cols[iLevel]);
+      const kanji = cols[iKanji];
+      const reading = cols[iReading];
+      if (!level || !kanji || !reading) continue;
+      rows.push({ level, kanji, reading });
+    }
+    return rows;
+  }
+
+  async function loadQuestions() {
+    const res = await fetch(CSV_PATH, { cache: "no-store" });
+    if (!res.ok) throw new Error(`CSV読み込み失敗: ${res.status}`);
+    const text = await res.text();
+    return parseCSV(text);
+  }
+
+  // =========================
+  // ゲーム状態
+  // =========================
+  let QUESTIONS = [];
+  let maxLevelInCSV = 1;
+
+  const state = {
+    current: null,
+    startTime: 0,
+    score: 0,
+    life: 5,
+    combo: 0,
+    clears: 0,
+    gameOver: false,
+  };
+
+  function normalize(s){ return (s || "").trim(); }
+  function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function calcUnlockTier() {
+    // 0.. unlockEvery-1 => tier0, unlockEvery.. => tier1 ...
+    return Math.floor(state.clears / RAMP.unlockEvery);
+  }
+
+  function calcMaxLevelAllowed() {
+    const tier = calcUnlockTier();
+    const allowed = 1 + tier;
+    // CSVの最大levelも超えない
+    return Math.max(1, Math.min(allowed, maxLevelInCSV, RAMP.maxLevelCap));
+  }
+
+  function calcTimeLimit() {
+    const tier = calcUnlockTier();
+    const t = RAMP.timeStart - tier * RAMP.timeDecayPerUnlock;
+    return Math.max(RAMP.timeMin, t);
+  }
+
+  function calcSpeed() {
+    const tier = calcUnlockTier();
+    const s = RAMP.speedStart + tier * RAMP.speedGainPerUnlock;
+    return Math.min(RAMP.speedMax, s);
+  }
+
+  function poolForCurrentDifficulty() {
+    const maxLv = calcMaxLevelAllowed();
+    // “徐々に難しく”：最大levelまでの問題を混ぜる（完全に上書きしたければ `q.level === maxLv` にする）
+    const pool = QUESTIONS.filter(q => q.level <= maxLv);
+    // 念のため空なら全体
+    return pool.length ? pool : QUESTIONS;
+  }
+
+  function spawn() {
+    const pool = poolForCurrentDifficulty();
+    const q = pick(pool);
+    const W = canvas.getBoundingClientRect().width;
+
+    state.current = {
+      level: q.level,
+      kanji: q.kanji,
+      reading: q.reading,
+      x: W / 2,
+      y: 60,
+      speed: calcSpeed(),
+      timeLimit: calcTimeLimit(),
+    };
+    state.startTime = performance.now();
+
+    // UI更新
+    uiMaxLv.textContent = String(calcMaxLevelAllowed());
+    uiStatus.textContent = `出題レベル${state.current.level}（上限${calcMaxLevelAllowed()}）/ 制限${state.current.timeLimit.toFixed(1)}s`;
+  }
+
+  function resetGame() {
+    state.score = 0;
+    state.life = 5;
+    state.combo = 0;
+    state.clears = 0;
+    state.gameOver = false;
+
+    uiScore.textContent = state.score;
+    uiLife.textContent = state.life;
+    uiCombo.textContent = state.combo;
+    uiClears.textContent = state.clears;
+    uiMaxLv.textContent = "1";
+
+    inp.value = "";
+    inp.focus();
+
+    spawn();
+  }
+
+  function missTimeout() {
+    state.life -= 1;
+    state.combo = 0;
+    uiLife.textContent = state.life;
+    uiCombo.textContent = state.combo;
+    if (state.life <= 0) state.gameOver = true;
+  }
+
+  function correct() {
+    state.clears += 1;
+    state.combo += 1;
+    const bonus = Math.min(200, state.combo * 10);
+    state.score += 100 + bonus;
+
+    uiScore.textContent = state.score;
+    uiCombo.textContent = state.combo;
+    uiClears.textContent = state.clears;
+  }
+
+  // 入力：正解は「ひらがな reading のみ」
+  inp.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (state.gameOver || !state.current) return;
+
+    const typed = normalize(inp.value);
+    inp.value = "";
+    if (!typed) return;
+
+    if (typed === state.current.reading) {
+      correct();
+      spawn(); // 次へ
+    }
+    // 間違いは“時間内ならOK” => 何もしない（打ち直し）
+  });
+
+  restartBtn.addEventListener("click", resetGame);
+
+  // =========================
+  // 描画
+  // =========================
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function draw() {
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "#0f0f12";
+    ctx.fillRect(0, 0, W, H);
+
+    if (state.current) {
+      const elapsed = (performance.now() - state.startTime) / 1000;
+      const remain = Math.max(0, state.current.timeLimit - elapsed);
+      uiTime.textContent = remain.toFixed(1);
+
+      // 時間切れ => ミス確定して次へ
+      if (!state.gameOver && remain <= 0) {
+        missTimeout();
+        if (!state.gameOver) spawn();
+      }
+
+      // 落下
+      if (!state.gameOver) {
+        state.current.y += state.current.speed * (1/60); // 60fps想定の簡易
+      }
+
+      // 描画
+      const text = state.current.kanji;
+      ctx.font = "32px system-ui, -apple-system, Segoe UI, sans-serif";
+      const tw = ctx.measureText(text).width;
+      const boxW = tw + 34;
+      const boxH = 54;
+      const x = state.current.x - boxW / 2;
+      const y = state.current.y;
+
+      // 影
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "#000";
+      roundRect(x, y + 3, boxW, boxH, 12);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // 本体
+      ctx.fillStyle = "#3b3b46";
+      roundRect(x, y, boxW, boxH, 12);
+      ctx.fill();
+
+      // 文字
+      ctx.fillStyle = "#fff";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, x + 17, y + boxH / 2);
+
+      // タイムバー
+      ctx.fillStyle = "#555";
+      ctx.fillRect(x, y + boxH + 10, boxW, 7);
+      ctx.fillStyle = "#6cf";
+      ctx.fillRect(x, y + boxH + 10, boxW * (remain / state.current.timeLimit), 7);
+    }
+
+    if (state.gameOver) {
+      ctx.fillStyle = "rgba(0,0,0,.62)";
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = "#ff5a5a";
+      ctx.font = "bold 42px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("GAME OVER", W / 2, H / 2 - 14);
+
+      ctx.fillStyle = "#fff";
+      ctx.font = "18px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillText("下の「リスタート」で再開", W / 2, H / 2 + 26);
+
+      ctx.textAlign = "left";
+    }
+  }
+
+  // ループ
+  function loop() {
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  // =========================
+  // 起動
+  // =========================
+  (async () => {
+    resize();
+    try {
+      uiStatus.textContent = "questions.csv を読み込み中…";
+      QUESTIONS = await loadQuestions();
+      if (!QUESTIONS.length) throw new Error("CSVに問題がありません");
+
+      maxLevelInCSV = QUESTIONS.reduce((m, q) => Math.max(m, q.level), 1);
+      uiStatus.textContent = `読み込み完了：${QUESTIONS.length}問 / 最大level=${maxLevelInCSV}`;
+      resetGame();
+      loop();
+    } catch (err) {
+      uiStatus.textContent =
+        "読み込みに失敗しました。公開（http/https）環境で動かしてください。詳細: " + err.message;
+      console.error(err);
+    }
+  })();
+})();
+</script>
+</body>
+</html>
