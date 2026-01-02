@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kanji GO-like (10Q Clear + Mobile)</title>
+  <title>Kanji GO-like (10Q Clear + Mobile + Choice)</title>
   <style>
     :root{
       --bg:#0f0f12;
@@ -22,7 +22,7 @@
 
     html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
     .wrap { height:100%; display:grid; grid-template-rows: 1fr auto; }
-    canvas { width:100%; height:100%; display:block; touch-action: none; }
+    canvas { width:100%; height:100%; display:block; touch-action:none; }
 
     .ui{
       background:var(--panel);
@@ -74,8 +74,6 @@
       width:min(420px, 70vw);
       max-width:100%;
     }
-
-    /* iOSで拡大されにくいように16px以上確保 */
     @media (max-width: 520px){
       input{ font-size:16px; width:100%; }
     }
@@ -114,7 +112,6 @@
       border-radius:4px;
       border:1px solid rgba(255,255,255,.18);
       background: rgba(255,255,255,.06);
-      box-shadow: inset 0 0 0 0 rgba(255,255,255,0);
       position:relative;
     }
     .dot.done::after{
@@ -130,7 +127,6 @@
     .dot.lv3{ background: color-mix(in srgb, var(--lv3) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv3) 40%, rgba(255,255,255,.18)); }
     .dot.lv4{ background: color-mix(in srgb, var(--lv4) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv4) 40%, rgba(255,255,255,.18)); }
 
-    /* スマホではUIを縦積み */
     @media (max-width: 860px){
       .ui{ grid-template-columns: 1fr; }
       .right{ justify-content:flex-start; }
@@ -146,8 +142,18 @@
       75%{ transform: translateX(-3px); }
       100%{ transform: translateX(0); }
     }
-    .wrong{
-      box-shadow: 0 0 0 2px rgba(255,107,107,.45);
+    .wrong{ box-shadow: 0 0 0 2px rgba(255,107,107,.45); }
+
+    /* 時間切れ選択UI */
+    #choiceWrap{
+      display:none;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    #showAnswer{
+      display:none;
+      color: rgba(255,255,255,.9);
     }
   </style>
 </head>
@@ -171,7 +177,7 @@
              placeholder="例：とうきょう"
              disabled />
       <div class="hint" id="status">読み込み中…（questions.csv）</div>
-      <div class="hint">※スマホでも動くけど、遊びやすさはPC推奨（かな入力＋Enter）</div>
+      <div class="hint">※スマホでも動く（表示は崩れない）。操作はPCの方が楽。</div>
     </div>
 
     <div class="right">
@@ -179,9 +185,17 @@
       <div class="badge">TIME: <span id="time">10.0</span>s</div>
       <div class="badge">LIFE: <span id="life">5</span></div>
       <div class="badge">正解: <span id="clears">0</span>/10</div>
+
       <div class="badge progress" title="進捗">
         <span class="hint">進捗</span>
         <div id="prog" class="progress"></div>
+      </div>
+
+      <div class="badge" id="choiceWrap">
+        <span class="hint">時間切れ：</span>
+        <button id="retrySame">同じ問題</button>
+        <button id="skipDiff">別の問題</button>
+        <span class="hint" id="showAnswer"></span>
       </div>
     </div>
   </div>
@@ -198,7 +212,11 @@
   // Lv固定（1〜4）内訳：1〜3が3問ずつ、4が1問
   const NEED = {1:3,2:3,3:3,4:1};
 
-  const FALL_SPEED = 100;
+  // 落下速度は固定（レベルで変えない）
+  const FALL_SPEED = 90;
+
+  // 「画面外に流れる」対策：下限を固定（画面高さの45%あたりで止める）
+  const FALL_STOP_RATIO = 0.45; // 0.45 = 画面上から45%の位置で止まる
 
   const LV_COLOR = {
     1: getComputedStyle(document.documentElement).getPropertyValue('--lv1').trim(),
@@ -233,19 +251,33 @@
   const uiLvPill = document.getElementById("lvPill");
   const progEl = document.getElementById("prog");
 
-  // ===== 進捗（10マス）=====
+  const choiceWrap = document.getElementById("choiceWrap");
+  const retrySameBtn = document.getElementById("retrySame");
+  const skipDiffBtn = document.getElementById("skipDiff");
+  const showAnswer = document.getElementById("showAnswer");
+
+  // ===== 進捗（10マス：Lv1x3, Lv2x3, Lv3x3, Lv4x1）=====
   const progressDots = [];
-  function buildProgress(deck) {
+  function buildProgressFixed() {
     progEl.innerHTML = "";
     progressDots.length = 0;
-    for (let i = 0; i < deck.length; i++) {
-      const lv = deck[i].level;
+
+    const seq = [
+      ...Array(3).fill(1),
+      ...Array(3).fill(2),
+      ...Array(3).fill(3),
+      4
+    ];
+
+    for (let i = 0; i < seq.length; i++) {
+      const lv = seq[i];
       const d = document.createElement("div");
       d.className = `dot lv${lv}`;
       d.title = `Q${i+1} (Lv${lv})`;
       progEl.appendChild(d);
       progressDots.push(d);
     }
+    markProgressDone(0);
   }
   function markProgressDone(nDone) {
     for (let i = 0; i < progressDots.length; i++) {
@@ -313,8 +345,11 @@
 
   // ===== ゲーム状態 =====
   let QUESTIONS = [];
-  let deck = [];
-  let deckIndex = 0;
+
+  // レベルごとの「今回使う問題（3/3/3/1）」と「未正解プール」
+  let levelPool = {1:[],2:[],3:[],4:[]};
+  let remaining = {1:[],2:[],3:[],4:[]};
+  let curLevel = 1;
 
   const state = {
     mode: "loading", // loading | ready | playing | gameover | clear
@@ -322,12 +357,14 @@
     startTime: 0,
     life: LIFE_START,
     clears: 0,
+    waitingChoice: false // 時間切れ選択中はtrue
   };
 
   // 演出
   let flashAlpha = 0;
   let flashColor = "#ffffff";
-  let maruAlpha = 0;  // 「〇」演出
+  let maruAlpha = 0;
+
   function triggerCorrectFX(lv) {
     flashAlpha = 0.55;
     flashColor = LV_COLOR[lv] || "#ffffff";
@@ -344,7 +381,7 @@
     return a;
   }
 
-  function validateAndBuildDeck() {
+  function validateAndBuildPools() {
     const byLv = new Map([[1,[]],[2,[]],[3,[]],[4,[]]]);
     for (const q of QUESTIONS) {
       if (byLv.has(q.level)) byLv.get(q.level).push(q);
@@ -358,25 +395,21 @@
     }
     if (missing.length) throw new Error("CSVの問題数が足りません: " + missing.join(" / "));
 
-    // 各Lvから必要数だけ取る（CSVに多くてもOK）
-    const picked = [];
+    // レベルごとに必要数だけピック（CSVに多くてもOK）
+    const pick = {};
     for (const lv of [1,2,3,4]) {
       const arr = byLv.get(lv).slice();
       shuffleInPlace(arr);
-      picked.push(...arr.slice(0, NEED[lv]));
+      pick[lv] = arr.slice(0, NEED[lv]);
     }
 
-    // Lv1→Lv2→Lv3→Lv4（同Lv内だけシャッフル）
-    const lv1 = shuffleInPlace(picked.filter(q => q.level === 1));
-    const lv2 = shuffleInPlace(picked.filter(q => q.level === 2));
-    const lv3 = shuffleInPlace(picked.filter(q => q.level === 3));
-    const lv4 = picked.filter(q => q.level === 4);
+    // “現在の難易度以下を出さない”を成立させるため、
+    // Lv1の未正解が消えるまでLv2に進まない…の方式にする
+    levelPool = {1: pick[1], 2: pick[2], 3: pick[3], 4: pick[4]};
+    remaining = {1: pick[1].slice(), 2: pick[2].slice(), 3: pick[3].slice(), 4: pick[4].slice()};
+    curLevel = 1;
 
-    deck = [...lv1, ...lv2, ...lv3, ...lv4];
-    deckIndex = 0;
-
-    buildProgress(deck);
-    markProgressDone(0);
+    buildProgressFixed();
   }
 
   function setLvPill(lv) {
@@ -401,26 +434,38 @@
       inp.disabled = true;
       startBtn.disabled = false;
       startBtn.textContent = "スタート";
-      uiStatus.textContent = "スタートを押して開始（ひらがなでEnter / 制限10秒 / 10問でクリア）";
+      uiStatus.textContent = "スタートを押して開始（ひらがなEnter / 制限10秒 / 10問正解でクリア）";
       setLvPill(null);
       uiTime.textContent = TIME_LIMIT.toFixed(1);
+      choiceWrap.style.display = "none";
+      showAnswer.style.display = "none";
+      state.waitingChoice = false;
     }
+
     if (m === "playing") {
       inp.disabled = false;
       startBtn.disabled = true;
       inp.focus();
     }
+
     if (m === "clear") {
       inp.disabled = true;
       startBtn.disabled = false;
       startBtn.textContent = "もう一回";
       uiStatus.textContent = "CLEAR！「もう一回」で再挑戦";
+      choiceWrap.style.display = "none";
+      showAnswer.style.display = "none";
+      state.waitingChoice = false;
     }
+
     if (m === "gameover") {
       inp.disabled = true;
       startBtn.disabled = false;
       startBtn.textContent = "もう一回";
       uiStatus.textContent = "GAME OVER…「もう一回」で再挑戦";
+      choiceWrap.style.display = "none";
+      showAnswer.style.display = "none";
+      state.waitingChoice = false;
     }
   }
 
@@ -428,15 +473,26 @@
     state.life = LIFE_START;
     state.clears = 0;
     state.current = null;
+    state.waitingChoice = false;
 
     uiLife.textContent = state.life;
     uiClears.textContent = state.clears;
+    markProgressDone(0);
     uiTime.textContent = TIME_LIMIT.toFixed(1);
     inp.value = "";
     inp.classList.remove("wrong","shake");
+    choiceWrap.style.display = "none";
+    showAnswer.style.display = "none";
+    showAnswer.textContent = "";
 
-    validateAndBuildDeck();
+    validateAndBuildPools();
     setMode("ready");
+  }
+
+  function currentLevelAdvanceIfNeeded() {
+    while (curLevel <= 4 && remaining[curLevel].length === 0) {
+      curLevel += 1;
+    }
   }
 
   function spawnNext() {
@@ -445,8 +501,16 @@
       return;
     }
 
-    const q = deck[deckIndex];
-    deckIndex += 1;
+    currentLevelAdvanceIfNeeded();
+    if (curLevel > 4) {
+      setMode("clear");
+      return;
+    }
+
+    // 未正解プールからランダムに1問
+    const arr = remaining[curLevel];
+    const idx = Math.floor(Math.random() * arr.length);
+    const q = arr[idx];
 
     const W = canvas.getBoundingClientRect().width;
     const lv = q.level;
@@ -458,16 +522,23 @@
       x: W / 2,
       y: 60,
       speed: FALL_SPEED,
-      timeLimit: TIME_LIMIT
+      timeLimit: TIME_LIMIT,
+      _idxInRemaining: idx
     };
+
     state.startTime = performance.now();
     setLvPill(lv);
 
-    uiStatus.textContent = `残り ${TOTAL_CLEAR - state.clears}問（Lv${lv}）`;
+    // 選択UIを隠す
+    choiceWrap.style.display = "none";
+    showAnswer.style.display = "none";
+    showAnswer.textContent = "";
+    state.waitingChoice = false;
+
+    uiStatus.textContent = `Lv${lv} / 残り ${TOTAL_CLEAR - state.clears}問`;
   }
 
   function startOrReplay() {
-    // ready -> start
     if (state.mode === "ready") {
       setMode("playing");
       spawnNext();
@@ -475,7 +546,6 @@
       return;
     }
 
-    // clear/gameover -> replay
     if (state.mode === "clear" || state.mode === "gameover") {
       resetGame();
       setMode("playing");
@@ -484,28 +554,16 @@
     }
   }
 
-  function timeoutMiss() {
-    state.life -= 1;
-    uiLife.textContent = state.life;
-
-    // 低めの音
-    beep({freq: 180, dur: 0.10, type: "sawtooth", vol: 0.04});
-
-    if (navigator.vibrate) navigator.vibrate(40);
-
-    if (state.life <= 0) {
-      setMode("gameover");
-      return;
-    }
-    spawnNext();
-  }
-
   function correct() {
+    // 今の問題を「未正解」から削除
+    if (state.current && typeof state.current._idxInRemaining === "number") {
+      remaining[curLevel].splice(state.current._idxInRemaining, 1);
+    }
+
     state.clears += 1;
     uiClears.textContent = state.clears;
     markProgressDone(state.clears);
 
-    // 正解演出
     triggerCorrectFX(state.current?.level);
     beep({freq: 880, dur: 0.07, type: "triangle", vol: 0.05});
 
@@ -519,23 +577,88 @@
   function wrongInputFX() {
     inp.classList.add("wrong","shake");
     if (navigator.vibrate) navigator.vibrate(15);
-    // すぐ戻す
-    setTimeout(() => {
-      inp.classList.remove("shake");
-    }, 220);
-    setTimeout(() => {
-      inp.classList.remove("wrong");
-    }, 420);
-    // 軽いSE（任意）
+    setTimeout(() => inp.classList.remove("shake"), 220);
+    setTimeout(() => inp.classList.remove("wrong"), 420);
     beep({freq: 300, dur: 0.04, type: "sine", vol: 0.03});
   }
 
-  // 入力：ひらがなのみ正解 / 誤入力はミス扱いしない（時間内ならOK）
+  function timeoutMiss() {
+    state.life -= 1;
+    uiLife.textContent = state.life;
+
+    beep({freq: 180, dur: 0.10, type: "sawtooth", vol: 0.04});
+    if (navigator.vibrate) navigator.vibrate(40);
+
+    if (state.life <= 0) {
+      setMode("gameover");
+      return;
+    }
+
+    // 選択UIを出す（同じ問題 or 別の問題）
+    state.waitingChoice = true;
+    choiceWrap.style.display = "flex";
+    showAnswer.style.display = "none";
+    showAnswer.textContent = "";
+    uiStatus.textContent = `時間切れ！「同じ問題」か「別の問題」を選んでね`;
+  }
+
+  // ===== 選択ボタン =====
+  retrySameBtn.addEventListener("click", () => {
+    if (state.mode !== "playing" || !state.current) return;
+
+    // 同じ問題：タイマーと位置だけ戻して続行
+    state.startTime = performance.now();
+    state.current.y = 60;
+
+    choiceWrap.style.display = "none";
+    showAnswer.style.display = "none";
+    showAnswer.textContent = "";
+    state.waitingChoice = false;
+
+    inp.focus();
+  });
+
+  skipDiffBtn.addEventListener("click", () => {
+    if (state.mode !== "playing" || !state.current) return;
+
+    // 別の問題：答えを表示してから次へ（※正解扱いにはしない）
+    showAnswer.style.display = "inline";
+    showAnswer.textContent = `答え：${state.current.reading}`;
+
+    // ここで「今の問題は未正解のまま残す」ので、
+    // 同レベルの別問題に進むため、まず今の問題をremainingから一時的に外す
+    // → 次の問題でまた戻す（“同レベル内で別問題”を確実に出すためのテク）
+    const saved = state.current;
+    let removed = null;
+    if (typeof saved._idxInRemaining === "number" && remaining[curLevel].length > 1) {
+      removed = remaining[curLevel].splice(saved._idxInRemaining, 1)[0];
+    }
+
+    setTimeout(() => {
+      choiceWrap.style.display = "none";
+      showAnswer.style.display = "none";
+      showAnswer.textContent = "";
+      state.waitingChoice = false;
+
+      // 別問題へ
+      spawnNext();
+
+      // 一時的に外した問題を元に戻す（未正解のまま残す）
+      if (removed) {
+        remaining[curLevel].push(removed);
+      }
+
+      inp.focus();
+    }, 900);
+  });
+
+  // ===== 入力 =====
   inp.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
 
     if (state.mode !== "playing" || !state.current) return;
+    if (state.waitingChoice) return; // 選択中は入力無効
 
     const typed = normalize(inp.value);
     inp.value = "";
@@ -544,14 +667,13 @@
     if (typed === state.current.reading) {
       correct();
     } else {
-      // “ミスしても時間内ならOK”だが、フィードバックだけは出す
       wrongInputFX();
     }
   });
 
-  // クリックでフォーカス（スマホで入力しやすく）
+  // Canvasタップでフォーカス
   canvas.addEventListener("pointerdown", () => {
-    if (state.mode === "playing") inp.focus();
+    if (state.mode === "playing" && !state.waitingChoice) inp.focus();
   });
 
   startBtn.addEventListener("click", startOrReplay);
@@ -609,11 +731,18 @@
     ctx.stroke();
     ctx.restore();
 
-    maruAlpha *= 0.82; // 減衰
+    maruAlpha *= 0.82;
     if (maruAlpha < 0.01) maruAlpha = 0;
   }
 
+  // フレーム間Δtで落下を安定させる（PC/スマホ差を減らす）
+  let lastT = performance.now();
+
   function draw() {
+    const now = performance.now();
+    const dt = Math.min(0.033, (now - lastT) / 1000); // 最大33ms相当
+    lastT = now;
+
     const rect = canvas.getBoundingClientRect();
     const W = rect.width, H = rect.height;
 
@@ -643,7 +772,7 @@
 
     // モード別
     if (state.mode === "ready") {
-      drawOverlay("スタートを押して開始", "ひらがなEnter / 制限10秒 / 10問でクリア");
+      drawOverlay("スタートを押して開始", "ひらがなEnter / 制限10秒 / 10問正解でクリア");
       uiTime.textContent = TIME_LIMIT.toFixed(1);
       return;
     }
@@ -660,17 +789,20 @@
 
     // プレイ中
     if (state.mode === "playing" && state.current) {
-      const elapsed = (performance.now() - state.startTime) / 1000;
+      const elapsed = (now - state.startTime) / 1000;
       const remain = Math.max(0, state.current.timeLimit - elapsed);
       uiTime.textContent = remain.toFixed(1);
 
-      if (remain <= 0) {
+      // タイムアウト（選択中でない時だけ）
+      if (!state.waitingChoice && remain <= 0) {
         timeoutMiss();
       }
 
-      // 落下（見た目）
-      if (state.mode === "playing" && state.current) {
-        state.current.y += state.current.speed * (1/60);
+      // 落下（見た目）：選択中は止める
+      if (!state.waitingChoice) {
+        const stopY = Math.max(120, H * FALL_STOP_RATIO);
+        state.current.y += state.current.speed * dt;
+        if (state.current.y > stopY) state.current.y = stopY;
       }
 
       const lv = state.current.level;
@@ -729,10 +861,11 @@
       QUESTIONS = await loadQuestions();
       if (!QUESTIONS.length) throw new Error("CSVに問題がありません");
 
-      // Lv1〜4だけ
+      // Lv1〜4だけ使う
       QUESTIONS = QUESTIONS.filter(q => [1,2,3,4].includes(q.level));
 
-      validateAndBuildDeck();
+      // プール生成
+      validateAndBuildPools();
 
       uiLife.textContent = LIFE_START;
       uiClears.textContent = "0";
@@ -755,4 +888,3 @@
 </script>
 </body>
 </html>
-
