@@ -3,13 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Kanji GO-like (Fixed UI + Timeout Choice)</title>
+  <title>Kanji GO-like (Fixed UI + Timeout Choice + Give Up)</title>
   <style>
     :root{
       --bg:#0f0f12;
       --panel:#222228;
       --panel2:#2b2b33;
-      --card:#3b3b46;
       --text:#fff;
       --muted: rgba(255,255,255,.80);
       --muted2: rgba(255,255,255,.58);
@@ -29,11 +28,9 @@
       min-height: 100svh;
     }
 
-    /* 上：問題表示エリア */
     .stage{ position:relative; min-height:0; }
     canvas{ width:100%; height:100%; display:block; touch-action:none; }
 
-    /* 下：UI */
     .ui{
       background:var(--panel);
       border-top:1px solid rgba(255,255,255,.06);
@@ -133,6 +130,12 @@
     button:hover{ filter:brightness(1.08); }
     button:disabled{ opacity:.5; cursor:not-allowed; }
 
+    /* 諦めるボタンだけ少し危険色 */
+    #giveup{
+      border-color: rgba(255,107,107,.35);
+      background: color-mix(in srgb, #3a3a44 70%, rgba(255,107,107,.25));
+    }
+
     input{
       height:42px;
       border-radius:12px;
@@ -182,7 +185,6 @@
       color: rgba(255,255,255,.92);
     }
 
-    /* 入力ミス演出（ミス扱いではない） */
     .shake { animation: shake .18s linear 0s 1; }
     @keyframes shake{
       0%{ transform: translateX(0); }
@@ -193,7 +195,6 @@
     }
     .wrong{ box-shadow: 0 0 0 2px rgba(255,107,107,.45); }
 
-    /* スマホ縦積み */
     @media (max-width: 900px){
       .midbar{ grid-template-columns: 1fr; }
       .label{ white-space:normal; }
@@ -226,10 +227,11 @@
       <div class="controls">
         <button id="start">スタート</button>
         <button id="restart">リスタート</button>
+        <button id="giveup" disabled>あきらめる</button>
       </div>
 
       <div style="display:grid; gap:6px;">
-        <div class="label">ひらがなで入力してEnter（入力ミスはOK / 時間切れだけ選択）</div>
+        <div class="label">ひらがなで入力してEnter（入力ミスはOK / 時間切れ・あきらめる だけ選択）</div>
         <input id="inp"
                autocomplete="off"
                autocapitalize="off"
@@ -264,12 +266,10 @@
   const TIME_LIMIT = 10.0;
   const TOTAL_CLEAR = 10;
   const LIFE_START = 5;
-
-  // Lv内訳：1〜3が3問ずつ、4が1問
   const NEED = {1:3,2:3,3:3,4:1};
 
-  // Canvas上のカード表示位置（固定）
-  const FIXED_Y_RATIO = 0.30; // 上寄り中央
+  // 固定表示
+  const FIXED_Y_RATIO = 0.30;
   const MIN_FIXED_Y = 110;
 
   const LV_COLOR = {
@@ -286,6 +286,7 @@
 
   const startBtn = document.getElementById("start");
   const restartBtn = document.getElementById("restart");
+  const giveupBtn = document.getElementById("giveup");
   const focusBtn = document.getElementById("focusBtn");
   const inp = document.getElementById("inp");
 
@@ -311,7 +312,7 @@
   }
   window.addEventListener("resize", resize);
 
-  // ===== 進捗（固定10マス）=====
+  // ===== 進捗 =====
   const progressDots = [];
   function buildProgressFixed() {
     progEl.innerHTML = "";
@@ -366,7 +367,7 @@
     } catch (_) {}
   }
 
-  // ===== CSV読み込み（カンマ区切り前提）=====
+  // ===== CSV =====
   function parseCSV(text) {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
     if (!lines.length) return [];
@@ -397,7 +398,7 @@
     const ctrl = new AbortController();
     const id = setTimeout(() => ctrl.abort(), ms);
     try {
-      return await fetch(url, { cache: "no-store", signal: ctrl.signal });
+      return await fetch(url, { cache:"no-store", signal: ctrl.signal });
     } finally {
       clearTimeout(id);
     }
@@ -418,7 +419,7 @@
     return data;
   }
 
-  // ===== ゲーム状態 =====
+  // ===== 状態 =====
   let QUESTIONS = [];
   let remaining = {1:[],2:[],3:[],4:[]};
   let curLevel = 1;
@@ -429,7 +430,7 @@
     startTime: 0,
     life: LIFE_START,
     clears: 0,
-    waitingChoice: false, // 時間切れ選択中のみ true
+    waitingChoice: false, // 時間切れ/あきらめる の選択中のみ true
   };
 
   // 演出
@@ -519,15 +520,17 @@
       inp.disabled = true;
       startBtn.disabled = false;
       startBtn.textContent = "スタート";
+      giveupBtn.disabled = true;
       setLvPill(null);
       hideChoice();
       updatePills(TIME_LIMIT);
-      uiStatus.innerHTML = "<strong>スタート</strong>を押して開始。入力ミスはOK、<strong>時間切れだけ</strong>選択が出る。";
+      uiStatus.innerHTML = "<strong>スタート</strong>を押して開始。入力ミスはOK、<strong>時間切れ/あきらめる</strong>だけ選択が出る。";
     }
 
     if (m === "playing") {
       inp.disabled = false;
       startBtn.disabled = true;
+      giveupBtn.disabled = false;
       hideChoice();
       inp.focus();
     }
@@ -536,6 +539,7 @@
       inp.disabled = true;
       startBtn.disabled = false;
       startBtn.textContent = "もう一回";
+      giveupBtn.disabled = true;
       hideChoice();
       updatePills(TIME_LIMIT);
       uiStatus.innerHTML = "<strong>CLEAR!</strong> 10問正解。おつかれ！";
@@ -545,6 +549,7 @@
       inp.disabled = true;
       startBtn.disabled = false;
       startBtn.textContent = "もう一回";
+      giveupBtn.disabled = true;
       hideChoice();
       updatePills(TIME_LIMIT);
       uiStatus.innerHTML = "<strong>GAME OVER</strong>…「もう一回」or リスタート";
@@ -569,28 +574,28 @@
     while (curLevel <= 4 && remaining[curLevel].length === 0) curLevel += 1;
   }
 
+  // ★ “別の問題”を確実に引く：最大20回トライ
   function pickFromCurrentLevel({excludeSame=false} = {}) {
     const arr = remaining[curLevel];
     if (!arr.length) return null;
 
-    if (!excludeSame || arr.length === 1 || !state.current) {
+    // 除外しない or 比較対象がない
+    if (!excludeSame || !state.current || arr.length === 1) {
       const idx = Math.floor(Math.random() * arr.length);
       return { q: arr[idx], idx };
     }
 
-    // 現在と同じ問題は避ける（可能なら）
-    const candidates = [];
-    for (let i = 0; i < arr.length; i++) {
-      const it = arr[i];
-      if (it.kanji !== state.current.kanji || it.reading !== state.current.reading) {
-        candidates.push({q: it, idx: i});
-      }
-    }
-    if (!candidates.length) {
+    const sameKey = `${state.current.kanji}||${state.current.reading}`;
+    for (let t=0; t<20; t++) {
       const idx = Math.floor(Math.random() * arr.length);
-      return { q: arr[idx], idx };
+      const q = arr[idx];
+      const key = `${q.kanji}||${q.reading}`;
+      if (key !== sameKey) return { q, idx };
     }
-    return candidates[Math.floor(Math.random() * candidates.length)];
+
+    // どうしても同じしか引けない（重複データ等）なら諦めて返す
+    const idx = Math.floor(Math.random() * arr.length);
+    return { q: arr[idx], idx, forcedSame: true };
   }
 
   function spawnNext({excludeSame=false} = {}) {
@@ -611,7 +616,8 @@
       return;
     }
 
-    const { q, idx } = picked;
+    const { q, idx, forcedSame } = picked;
+
     const rect = canvas.getBoundingClientRect();
     const W = rect.width, H = rect.height;
     const fixedY = Math.max(MIN_FIXED_Y, H * FIXED_Y_RATIO);
@@ -620,7 +626,7 @@
       level: q.level,
       kanji: q.kanji,
       reading: q.reading,
-      x: W / 2,
+      x: W/2,
       y: fixedY,
       timeLimit: TIME_LIMIT,
       _idxInRemaining: idx
@@ -630,12 +636,16 @@
     setLvPill(q.level);
     hideChoice();
 
-    uiStatus.innerHTML = `Lv<strong>${q.level}</strong>：ひらがなでEnter（時間切れだけ選択）`;
+    if (excludeSame && forcedSame) {
+      uiStatus.innerHTML = `Lv<strong>${q.level}</strong>：別問題を探したけど同一しか無かった（重複 or 残り1問）`;
+    } else {
+      uiStatus.innerHTML = `Lv<strong>${q.level}</strong>：ひらがなでEnter（時間切れ/あきらめる だけ選択）`;
+    }
+
     updatePills(TIME_LIMIT);
   }
 
   function correct() {
-    // 正解したら同Lvの未正解プールから削除
     if (state.current && typeof state.current._idxInRemaining === "number") {
       remaining[curLevel].splice(state.current._idxInRemaining, 1);
     }
@@ -662,15 +672,15 @@
     uiStatus.innerHTML = "入力ミスはOK。<strong>時間内なら何度でも</strong>試せる。";
   }
 
-  function showTimeoutChoice() {
+  function showTimeoutChoice(reasonLabel) {
     state.waitingChoice = true;
     choiceWrap.style.display = "flex";
     showAnswer.style.display = "none";
     showAnswer.textContent = "";
-    uiStatus.innerHTML = "<strong>時間切れ！</strong> 同じ問題を続けるか、別の問題へ（答え表示）";
+    uiStatus.innerHTML = `<strong>${reasonLabel}</strong> 同じ問題を続けるか、別の問題へ（答え表示）`;
   }
 
-  function timeoutMiss() {
+  function timeoutMiss(reasonLabel="時間切れ！") {
     state.life -= 1;
 
     beep({freq: 180, dur: 0.10, type: "sawtooth", vol: 0.04});
@@ -680,13 +690,12 @@
       setMode("gameover");
       return;
     }
-    showTimeoutChoice();
+    showTimeoutChoice(reasonLabel);
   }
 
-  // ===== 選択（時間切れのみ）=====
+  // ===== 選択（時間切れ/あきらめる のみ）=====
   retrySameBtn.addEventListener("click", () => {
     if (state.mode !== "playing" || !state.current) return;
-    // 同じ問題：タイマーだけリセット
     state.startTime = performance.now();
     hideChoice();
     inp.focus();
@@ -695,7 +704,17 @@
   skipDiffBtn.addEventListener("click", () => {
     if (state.mode !== "playing" || !state.current) return;
 
-    // 別の問題：答えを表示 → 同Lv内の別問題へ
+    const left = remaining[curLevel]?.length ?? 0;
+
+    // Lvに残り1問しかないなら別問題にできない
+    if (left <= 1) {
+      uiStatus.innerHTML = `Lv<strong>${curLevel}</strong>は残り<strong>1問</strong>なので別の問題にできない。タイマーだけリセット。`;
+      state.startTime = performance.now();
+      hideChoice();
+      inp.focus();
+      return;
+    }
+
     showAnswer.style.display = "inline";
     showAnswer.textContent = `答え：${state.current.reading}`;
 
@@ -706,8 +725,15 @@
     }, 900);
   });
 
-  // 入力欄フォーカス
+  // ===== ボタン類 =====
   focusBtn.addEventListener("click", () => inp.focus());
+
+  giveupBtn.addEventListener("click", () => {
+    if (state.mode !== "playing" || !state.current) return;
+    if (state.waitingChoice) return;
+    timeoutMiss("あきらめた！");
+  });
+
   canvas.addEventListener("pointerdown", () => {
     if (state.mode === "playing" && !state.waitingChoice) inp.focus();
   });
@@ -729,7 +755,7 @@
     if (typed === state.current.reading) {
       correct();
     } else {
-      wrongInputFX(); // ミス扱いしない
+      wrongInputFX();
     }
   });
 
@@ -795,7 +821,6 @@
     ctx.fillStyle = "#0f0f12";
     ctx.fillRect(0, 0, W, H);
 
-    // フラッシュ
     if (flashAlpha > 0.001) {
       ctx.globalAlpha = flashAlpha;
       ctx.fillStyle = flashColor;
@@ -807,7 +832,7 @@
     }
 
     if (state.mode === "ready") {
-      drawOverlay("スタートを押して開始", "入力ミスはOK / 時間切れだけ選択");
+      drawOverlay("スタートを押して開始", "入力ミスはOK / 時間切れ・あきらめる だけ選択");
       updatePills(TIME_LIMIT);
       return;
     }
@@ -823,7 +848,6 @@
     }
 
     if (state.mode === "playing" && state.current) {
-      // 選択中はタイマー停止
       let remain = 0;
       if (!state.waitingChoice) {
         const elapsed = (now - state.startTime) / 1000;
@@ -832,51 +856,45 @@
       updatePills(remain);
 
       if (!state.waitingChoice && remain <= 0) {
-        timeoutMiss();
+        timeoutMiss("時間切れ！");
         return;
       }
 
-      // 固定位置（回転/リサイズにも追従）
       const fixedY = Math.max(MIN_FIXED_Y, H * FIXED_Y_RATIO);
-      state.current.x = W / 2;
+      state.current.x = W/2;
       state.current.y = fixedY;
 
       const lv = state.current.level;
       const accent = LV_COLOR[lv] || LV_COLOR.default;
 
       const text = state.current.kanji;
-
       ctx.font = "36px system-ui, -apple-system, Segoe UI, sans-serif";
       const tw = ctx.measureText(text).width;
+
       const boxW = Math.min(W - 40, tw + 44);
       const boxH = 64;
       const x = (W - boxW) / 2;
       const y = state.current.y;
 
-      // 影
       ctx.globalAlpha = 0.25;
       ctx.fillStyle = "#000";
       roundRect(x, y + 4, boxW, boxH, 14);
       ctx.fill();
       ctx.globalAlpha = 1;
 
-      // 本体
       ctx.fillStyle = "#3b3b46";
       roundRect(x, y, boxW, boxH, 14);
       ctx.fill();
 
-      // アクセント
       ctx.fillStyle = accent + "cc";
       ctx.fillRect(x, y, boxW, 4);
 
-      // 文字（中央）
       ctx.fillStyle = "#fff";
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
       ctx.fillText(text, W/2, y + boxH/2);
       ctx.textAlign = "left";
 
-      // タイムバー
       const barX = x;
       const barY = y + boxH + 12;
       const barW = boxW;
@@ -895,7 +913,7 @@
     requestAnimationFrame(loop);
   }
 
-  // ===== ボタン =====
+  // ===== ゲーム開始 =====
   startBtn.addEventListener("click", () => {
     if (state.mode === "ready") {
       setMode("playing");
@@ -916,14 +934,13 @@
     resetGame();
   });
 
-  // ===== 起動（順序を崩さない）=====
   async function boot() {
     resize();
     try {
       state.mode = "loading";
       inp.disabled = true;
       startBtn.disabled = true;
-      uiStatus.textContent = "questions.csv を読み込み中…";
+      giveupBtn.disabled = true;
 
       QUESTIONS = await loadQuestions();
       QUESTIONS = QUESTIONS.filter(q => [1,2,3,4].includes(q.level));
@@ -933,16 +950,16 @@
       state.life = LIFE_START;
       state.clears = 0;
       setMode("ready");
+
       startBtn.disabled = false;
       uiStatus.innerHTML = "読み込み完了。<strong>スタート</strong>で開始。";
-
       loop();
     } catch (err) {
       console.error(err);
-      // “読み込み中…”で止まらないように必ず表示
       uiStatus.textContent = "読み込み失敗：" + (err?.message || err);
       startBtn.disabled = true;
       inp.disabled = true;
+      giveupBtn.disabled = true;
     }
   }
 
