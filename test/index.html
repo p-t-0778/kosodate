@@ -11,17 +11,14 @@
       --panel2:#2b2b33;
       --card:#3b3b46;
       --text:#fff;
-      --muted: rgba(255,255,255,.78);
-      --muted2: rgba(255,255,255,.55);
+      --muted: rgba(255,255,255,.80);
+      --muted2: rgba(255,255,255,.58);
 
       --lv1:#5ecbff;
       --lv2:#7bff91;
       --lv3:#ffd36b;
       --lv4:#ff6b6b;
       --lvD:#c9c9d2;
-
-      --danger:#ff6b6b;
-      --ok:#7bff91;
     }
 
     html, body { margin:0; height:100%; background:var(--bg); color:var(--text); }
@@ -32,28 +29,19 @@
       min-height: 100svh;
     }
 
-    /* Canvasは「問題表示エリア」として使う */
-    .stage{
-      position:relative;
-      min-height: 0;
-    }
-    canvas {
-      width:100%;
-      height:100%;
-      display:block;
-      touch-action:none;
-    }
+    /* 上：問題表示エリア */
+    .stage{ position:relative; min-height:0; }
+    canvas{ width:100%; height:100%; display:block; touch-action:none; }
 
-    /* 下部UI */
+    /* 下：UI */
     .ui{
       background:var(--panel);
-      border-top: 1px solid rgba(255,255,255,.06);
+      border-top:1px solid rgba(255,255,255,.06);
       padding:12px;
       display:grid;
       gap:10px;
     }
 
-    /* 上段：情報バー */
     .topbar{
       display:flex;
       gap:10px;
@@ -74,7 +62,7 @@
       gap:8px;
       align-items:center;
       font-size:13px;
-      color: var(--muted);
+      color:var(--muted);
     }
 
     .pill{
@@ -96,6 +84,7 @@
       align-items:center;
       flex-wrap:wrap;
     }
+
     .dot{
       width:14px;
       height:14px;
@@ -117,7 +106,6 @@
     .dot.lv3{ background: color-mix(in srgb, var(--lv3) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv3) 40%, rgba(255,255,255,.18)); }
     .dot.lv4{ background: color-mix(in srgb, var(--lv4) 18%, rgba(255,255,255,.06)); border-color: color-mix(in srgb, var(--lv4) 40%, rgba(255,255,255,.18)); }
 
-    /* 中段：入力 + 操作 */
     .midbar{
       display:grid;
       grid-template-columns: auto 1fr auto;
@@ -153,7 +141,7 @@
       padding:0 12px;
       font-size:18px;
       width:100%;
-      background: #ffffff;
+      background:#fff;
       color:#111;
     }
     @media (max-width: 520px){
@@ -162,15 +150,14 @@
 
     .label{
       font-size:13px;
-      color: var(--muted2);
+      color:var(--muted2);
       white-space:nowrap;
     }
 
-    /* 下段：メッセージ＆選択UI */
     .bottombar{
       display:grid;
       gap:8px;
-      background: var(--panel2);
+      background:var(--panel2);
       border:1px solid rgba(255,255,255,.08);
       border-radius:14px;
       padding:10px 12px;
@@ -178,8 +165,8 @@
 
     .status{
       font-size:13px;
-      color: var(--muted);
-      line-height: 1.4;
+      color:var(--muted);
+      line-height:1.4;
     }
     .status strong{ color:#fff; }
 
@@ -189,9 +176,10 @@
       align-items:center;
       flex-wrap:wrap;
     }
+
     .answer{
       display:none;
-      color: rgba(255,255,255,.9);
+      color: rgba(255,255,255,.92);
     }
 
     /* 入力ミス演出（ミス扱いではない） */
@@ -205,10 +193,11 @@
     }
     .wrong{ box-shadow: 0 0 0 2px rgba(255,107,107,.45); }
 
-    /* スマホは縦積み */
+    /* スマホ縦積み */
     @media (max-width: 900px){
       .midbar{ grid-template-columns: 1fr; }
       .label{ white-space:normal; }
+      .topbar{ justify-content:flex-start; }
     }
   </style>
 </head>
@@ -276,11 +265,11 @@
   const TOTAL_CLEAR = 10;
   const LIFE_START = 5;
 
-  // Lv固定内訳：1〜3が3問ずつ、4が1問
+  // Lv内訳：1〜3が3問ずつ、4が1問
   const NEED = {1:3,2:3,3:3,4:1};
 
   // Canvas上のカード表示位置（固定）
-  const FIXED_Y_RATIO = 0.30; // 画面の上寄り
+  const FIXED_Y_RATIO = 0.30; // 上寄り中央
   const MIN_FIXED_Y = 110;
 
   const LV_COLOR = {
@@ -291,20 +280,10 @@
     default: getComputedStyle(document.documentElement).getPropertyValue('--lvD').trim()
   };
 
-  // ===== Canvas =====
+  // ===== DOM =====
   const canvas = document.getElementById("c");
   const ctx = canvas.getContext("2d");
 
-  function resize() {
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  window.addEventListener("resize", resize);
-
-  // ===== UI =====
   const startBtn = document.getElementById("start");
   const restartBtn = document.getElementById("restart");
   const focusBtn = document.getElementById("focusBtn");
@@ -321,6 +300,16 @@
   const retrySameBtn = document.getElementById("retrySame");
   const skipDiffBtn = document.getElementById("skipDiff");
   const showAnswer = document.getElementById("showAnswer");
+
+  // ===== Canvas resize =====
+  function resize() {
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
 
   // ===== 進捗（固定10マス）=====
   const progressDots = [];
@@ -377,7 +366,7 @@
     } catch (_) {}
   }
 
-  // ===== CSV読み込み =====
+  // ===== CSV読み込み（カンマ区切り前提）=====
   function parseCSV(text) {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
     if (!lines.length) return [];
@@ -389,7 +378,7 @@
     const iKanji = idx("kanji");
     const iReading = idx("reading");
     if (iLevel < 0 || iKanji < 0 || iReading < 0) {
-      throw new Error("CSVヘッダは level,kanji,reading が必要です");
+      throw new Error(`CSVヘッダ不正（level,kanji,reading が必要）: ${header.join("|")}`);
     }
 
     const rows = [];
@@ -404,13 +393,32 @@
     return rows;
   }
 
-  async function loadQuestions() {
-    const res = await fetch(CSV_PATH, { cache: "no-store" });
-    if (!res.ok) throw new Error(`CSV読み込み失敗: ${res.status}`);
-    return parseCSV(await res.text());
+  async function fetchWithTimeout(url, ms=8000) {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), ms);
+    try {
+      return await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    } finally {
+      clearTimeout(id);
+    }
   }
 
-  // ===== 状態 =====
+  async function loadQuestions() {
+    uiStatus.textContent = "questions.csv を読み込み中…";
+    let res;
+    try {
+      res = await fetchWithTimeout(CSV_PATH, 8000);
+    } catch (e) {
+      throw new Error(`CSV取得失敗（到達不可/タイムアウト）: ${e.name || e}`);
+    }
+    if (!res.ok) throw new Error(`CSV読み込み失敗: HTTP ${res.status}`);
+    const text = await res.text();
+    const data = parseCSV(text);
+    if (!data.length) throw new Error("CSVに有効な問題がありません");
+    return data;
+  }
+
+  // ===== ゲーム状態 =====
   let QUESTIONS = [];
   let remaining = {1:[],2:[],3:[],4:[]};
   let curLevel = 1;
@@ -421,7 +429,7 @@
     startTime: 0,
     life: LIFE_START,
     clears: 0,
-    waitingChoice: false, // 時間切れ選択中
+    waitingChoice: false, // 時間切れ選択中のみ true
   };
 
   // 演出
@@ -434,8 +442,6 @@
     flashColor = LV_COLOR[lv] || "#ffffff";
     maruAlpha = 1.0;
   }
-
-  function normalize(s){ return (s || "").trim(); }
 
   function shuffleInPlace(a) {
     for (let i = a.length - 1; i > 0; i--) {
@@ -475,6 +481,7 @@
     curLevel = 1;
 
     buildProgressFixed();
+    markProgressDone(0);
   }
 
   function setLvPill(lv) {
@@ -492,17 +499,17 @@
     uiLvPill.style.color = c;
   }
 
+  function updatePills(remainSec) {
+    uiTimePill.textContent = `${remainSec.toFixed(1)}s`;
+    uiLifePill.textContent = `${state.life}`;
+    uiClearsPill.textContent = `${state.clears}/${TOTAL_CLEAR}`;
+  }
+
   function hideChoice() {
     state.waitingChoice = false;
     choiceWrap.style.display = "none";
     showAnswer.style.display = "none";
     showAnswer.textContent = "";
-  }
-
-  function updatePills(remainSec) {
-    uiTimePill.textContent = `${remainSec.toFixed(1)}s`;
-    uiLifePill.textContent = `${state.life}`;
-    uiClearsPill.textContent = `${state.clears}/${TOTAL_CLEAR}`;
   }
 
   function setMode(m) {
@@ -571,6 +578,7 @@
       return { q: arr[idx], idx };
     }
 
+    // 現在と同じ問題は避ける（可能なら）
     const candidates = [];
     for (let i = 0; i < arr.length; i++) {
       const it = arr[i];
@@ -626,22 +634,8 @@
     updatePills(TIME_LIMIT);
   }
 
-  function startOrReplay() {
-    if (state.mode === "ready") {
-      setMode("playing");
-      spawnNext();
-      beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
-      return;
-    }
-    if (state.mode === "clear" || state.mode === "gameover") {
-      resetGame();
-      setMode("playing");
-      spawnNext();
-      beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
-    }
-  }
-
   function correct() {
+    // 正解したら同Lvの未正解プールから削除
     if (state.current && typeof state.current._idxInRemaining === "number") {
       remaining[curLevel].splice(state.current._idxInRemaining, 1);
     }
@@ -665,8 +659,7 @@
     setTimeout(() => inp.classList.remove("shake"), 220);
     setTimeout(() => inp.classList.remove("wrong"), 420);
     beep({freq: 300, dur: 0.04, type: "sine", vol: 0.03});
-    // ステータスは下部パネル内だけ更新（Canvas上に文字を増やさない）
-    uiStatus.innerHTML = "入力はOK。<strong>時間内なら何度でも</strong>試せる。";
+    uiStatus.innerHTML = "入力ミスはOK。<strong>時間内なら何度でも</strong>試せる。";
   }
 
   function showTimeoutChoice() {
@@ -687,13 +680,13 @@
       setMode("gameover");
       return;
     }
-
     showTimeoutChoice();
   }
 
   // ===== 選択（時間切れのみ）=====
   retrySameBtn.addEventListener("click", () => {
     if (state.mode !== "playing" || !state.current) return;
+    // 同じ問題：タイマーだけリセット
     state.startTime = performance.now();
     hideChoice();
     inp.focus();
@@ -702,21 +695,26 @@
   skipDiffBtn.addEventListener("click", () => {
     if (state.mode !== "playing" || !state.current) return;
 
+    // 別の問題：答えを表示 → 同Lv内の別問題へ
     showAnswer.style.display = "inline";
     showAnswer.textContent = `答え：${state.current.reading}`;
 
     setTimeout(() => {
       hideChoice();
-      // 同Lv内の別問題を優先（可能なら現在以外）
       spawnNext({excludeSame:true});
       inp.focus();
     }, 900);
   });
 
-  // 入力フォーカス
+  // 入力欄フォーカス
   focusBtn.addEventListener("click", () => inp.focus());
+  canvas.addEventListener("pointerdown", () => {
+    if (state.mode === "playing" && !state.waitingChoice) inp.focus();
+  });
 
-  // ===== 入力（ミスは選択を出さない）=====
+  // ===== 入力（ミスは選択出さない）=====
+  function normalize(s){ return (s || "").trim(); }
+
   inp.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -731,7 +729,7 @@
     if (typed === state.current.reading) {
       correct();
     } else {
-      wrongInputFX(); // ミス扱いしない（選択なし）
+      wrongInputFX(); // ミス扱いしない
     }
   });
 
@@ -780,7 +778,7 @@
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 10;
     ctx.beginPath();
-    ctx.arc(W/2, H*0.38, Math.min(W,H) * 0.09, 0, Math.PI * 2);
+    ctx.arc(W/2, Math.max(MIN_FIXED_Y, H * FIXED_Y_RATIO) + 40, Math.min(W,H) * 0.09, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
 
@@ -810,18 +808,22 @@
 
     if (state.mode === "ready") {
       drawOverlay("スタートを押して開始", "入力ミスはOK / 時間切れだけ選択");
+      updatePills(TIME_LIMIT);
       return;
     }
     if (state.mode === "gameover") {
       drawOverlay("GAME OVER", "「もう一回」or リスタート");
+      updatePills(TIME_LIMIT);
       return;
     }
     if (state.mode === "clear") {
       drawOverlay("CLEAR!", "10問正解。おつかれ！");
+      updatePills(TIME_LIMIT);
       return;
     }
 
     if (state.mode === "playing" && state.current) {
+      // 選択中はタイマー停止
       let remain = 0;
       if (!state.waitingChoice) {
         const elapsed = (now - state.startTime) / 1000;
@@ -834,7 +836,7 @@
         return;
       }
 
-      // 固定位置（毎フレーム補正）
+      // 固定位置（回転/リサイズにも追従）
       const fixedY = Math.max(MIN_FIXED_Y, H * FIXED_Y_RATIO);
       state.current.x = W / 2;
       state.current.y = fixedY;
@@ -843,6 +845,7 @@
       const accent = LV_COLOR[lv] || LV_COLOR.default;
 
       const text = state.current.kanji;
+
       ctx.font = "36px system-ui, -apple-system, Segoe UI, sans-serif";
       const tw = ctx.measureText(text).width;
       const boxW = Math.min(W - 40, tw + 44);
@@ -862,11 +865,11 @@
       roundRect(x, y, boxW, boxH, 14);
       ctx.fill();
 
-      // アクセントバー
+      // アクセント
       ctx.fillStyle = accent + "cc";
       ctx.fillRect(x, y, boxW, 4);
 
-      // 文字（中央寄せ）
+      // 文字（中央）
       ctx.fillStyle = "#fff";
       ctx.textBaseline = "middle";
       ctx.textAlign = "center";
@@ -874,9 +877,10 @@
       ctx.textAlign = "left";
 
       // タイムバー
-      const barW = boxW;
       const barX = x;
       const barY = y + boxH + 12;
+      const barW = boxW;
+
       ctx.fillStyle = "#555";
       ctx.fillRect(barX, barY, barW, 8);
       ctx.fillStyle = accent;
@@ -891,17 +895,59 @@
     requestAnimationFrame(loop);
   }
 
-  // ===== 起動 =====
-  (async () => {
+  // ===== ボタン =====
+  startBtn.addEventListener("click", () => {
+    if (state.mode === "ready") {
+      setMode("playing");
+      spawnNext();
+      beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
+      return;
+    }
+    if (state.mode === "clear" || state.mode === "gameover") {
+      resetGame();
+      setMode("playing");
+      spawnNext();
+      beep({freq: 660, dur: 0.05, type: "sine", vol: 0.03});
+    }
+  });
+
+  restartBtn.addEventListener("click", () => {
+    if (state.mode === "loading") return;
+    resetGame();
+  });
+
+  // ===== 起動（順序を崩さない）=====
+  async function boot() {
     resize();
     try {
+      state.mode = "loading";
+      inp.disabled = true;
+      startBtn.disabled = true;
       uiStatus.textContent = "questions.csv を読み込み中…";
-      QUESTIONS = await loadQuestions();
-      if (!QUESTIONS.length) throw new Error("CSVに問題がありません");
 
+      QUESTIONS = await loadQuestions();
       QUESTIONS = QUESTIONS.filter(q => [1,2,3,4].includes(q.level));
+
       validateAndBuildPools();
 
       state.life = LIFE_START;
       state.clears = 0;
-      set
+      setMode("ready");
+      startBtn.disabled = false;
+      uiStatus.innerHTML = "読み込み完了。<strong>スタート</strong>で開始。";
+
+      loop();
+    } catch (err) {
+      console.error(err);
+      // “読み込み中…”で止まらないように必ず表示
+      uiStatus.textContent = "読み込み失敗：" + (err?.message || err);
+      startBtn.disabled = true;
+      inp.disabled = true;
+    }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
